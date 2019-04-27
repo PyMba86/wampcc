@@ -10,66 +10,59 @@
 
 #include <string>
 
-namespace wampcc
-{
+namespace wampcc {
 
 /** Stores a libuv system error code, as returned from underlying libuv system
  * call wrappers. */
-class uverr
-{
-private:
-  int m_value;
+    class uverr {
+    private:
+        int m_value;
 
-public:
-  /** Default constructor represents no-error situation. */
-  uverr() noexcept : m_value(0) {}
+    public:
+        /** Default constructor represents no-error situation. */
+        uverr() noexcept : m_value(0) {}
 
-  uverr(int libuv_error_code) noexcept : m_value(libuv_error_code) {}
+        uverr(int libuv_error_code) noexcept : m_value(libuv_error_code) {}
 
-  /** Return libuv error code */
-  int value() const noexcept { return m_value; }
+        /** Return libuv error code */
+        int value() const noexcept { return m_value; }
 
-  /** Attempt to convert the libuv error value into a OS specific value. Only
-   * suitable for unix platforms. */
-  int os_value() const noexcept
-  {
+        /** Attempt to convert the libuv error value into a OS specific value. Only
+         * suitable for unix platforms. */
+        int os_value() const noexcept {
 #ifdef _WIN32
-    return m_value;
+            return m_value;
 #else
-    return -m_value;
+            return -m_value;
 #endif
-  }
+        }
 
-  /** Assign a new error value */
-  uverr& operator=(int v) noexcept
-  {
-    m_value = v;
-    return *this;
-  }
+        /** Assign a new error value */
+        uverr &operator=(int v) noexcept {
+            m_value = v;
+            return *this;
+        }
 
-  /** Check if error value is non-zero, indicating an error */
-  explicit operator bool() const noexcept { return m_value != 0; }
+        /** Check if error value is non-zero, indicating an error */
+        explicit operator bool() const noexcept { return m_value != 0; }
 
-  /* Obtain explanatory error message related to error value */
-  const char* message() const;
-};
+        /* Obtain explanatory error message related to error value */
+        const char *message() const;
+    };
 
-inline bool operator==(uverr lhs, uverr rhs) noexcept
-{
-  return lhs.value() == rhs.value();
-}
+    inline bool operator==(uverr lhs, uverr rhs) noexcept {
+        return lhs.value() == rhs.value();
+    }
 
-inline bool operator!=(uverr lhs, uverr rhs) noexcept
-{
-  return lhs.value() != rhs.value();
-}
+    inline bool operator!=(uverr lhs, uverr rhs) noexcept {
+        return lhs.value() != rhs.value();
+    }
 
-template <typename _CharT, typename _Traits>
-std::basic_ostream<_CharT, _Traits>& operator<<(
-    std::basic_ostream<_CharT, _Traits>& os, uverr ec)
-{
-  return (os << ec.os_value());
-}
+    template<typename _CharT, typename _Traits>
+    std::basic_ostream<_CharT, _Traits> &operator<<(
+            std::basic_ostream<_CharT, _Traits> &os, uverr ec) {
+        return (os << ec.os_value());
+    }
 
 } // namespace
 

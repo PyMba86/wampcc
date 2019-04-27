@@ -20,11 +20,11 @@
 
 // VC++ doesn't define ssize_t, so follow definition used by libuv
 #ifdef _WIN32
-  #if !defined(_SSIZE_T_) && !defined(_SSIZE_T_DEFINED)
-    typedef intptr_t ssize_t;
-    #define _SSIZE_T_
-    #define _SSIZE_T_DEFINED
-  #endif
+#if !defined(_SSIZE_T_) && !defined(_SSIZE_T_DEFINED)
+typedef intptr_t ssize_t;
+#define _SSIZE_T_
+#define _SSIZE_T_DEFINED
+#endif
 #endif
 
 /* Types defined as part of the libuv.  We don't want to include any libuv
@@ -36,12 +36,13 @@ struct uv_write_s;
 typedef struct uv_tcp_s uv_tcp_t;
 typedef struct uv_write_s uv_write_t;
 
-namespace wampcc
-{
+namespace wampcc {
 
-class io_loop;
-class socket_address;
-class tcp_socket;
+    class io_loop;
+
+    class socket_address;
+
+    class tcp_socket;
 
 /** A RAII utility class to manage the lifetime of a block-scope tcp_socket
  * resource.  The guard will ensure that, at scope termination, the tcp_socket
@@ -49,13 +50,14 @@ class tcp_socket;
  * later destruction on the wampcc IO thread. This guard implements the
  * tcp_socket ownership rule, i.e., an unclosed socket should not be deleted on
  * the IO thread. */
-class tcp_socket_guard
-{
-public:
-  tcp_socket_guard(std::unique_ptr<tcp_socket>& __sock);
-  ~tcp_socket_guard();
-  std::unique_ptr<tcp_socket>& sock;
-};
+    class tcp_socket_guard {
+    public:
+        tcp_socket_guard(std::unique_ptr<tcp_socket> &__sock);
+
+        ~tcp_socket_guard();
+
+        std::unique_ptr<tcp_socket> &sock;
+    };
 
 
 /**
@@ -101,226 +103,243 @@ Using a tcp_socket_guard with a scoped tcp_socket prevents accidental unsafe
 deletion.  Unintended deletion typically occurs when an exception is thrown that
 leads to scope exit, and with it the deletion of associated local objects.
 */
-class tcp_socket
-{
-public:
-  enum class addr_family {
-    unspec,
-    inet4,
-    inet6,
-  };
+    class tcp_socket {
+    public:
+        enum class addr_family {
+            unspec,
+            inet4,
+            inet6,
+        };
 
-  /** Type thrown by tcp_socket when actions are attempted when the socket is
-   * not in an appropriate state. */
-  class error : public std::runtime_error
-  {
-  public:
-    error(std::string msg) : std::runtime_error(msg) {}
-  };
+        /** Type thrown by tcp_socket when actions are attempted when the socket is
+         * not in an appropriate state. */
+        class error : public std::runtime_error {
+        public:
+            error(std::string msg) : std::runtime_error(msg) {}
+        };
 
 
-  /* Socket options to apply to newly created sockets. This is not an exhaustive
-   * set, instead just covers most common options. */
-  struct options
-  {
-    /* Default values */
-    static constexpr bool default_tcp_no_delay_enable = true;
-    static constexpr bool default_keep_alive_enable = true;
-    static constexpr std::chrono::seconds default_keep_alive_delay = std::chrono::seconds(60);
+        /* Socket options to apply to newly created sockets. This is not an exhaustive
+         * set, instead just covers most common options. */
+        struct options {
+            /* Default values */
+            static constexpr bool default_tcp_no_delay_enable = true;
+            static constexpr bool default_keep_alive_enable = true;
+            static constexpr std::chrono::seconds default_keep_alive_delay = std::chrono::seconds(60);
 
-    /* Individual options */
-    bool tcp_no_delay_enable;
+            /* Individual options */
+            bool tcp_no_delay_enable;
 
-    bool keep_alive_enable;
-    std::chrono::seconds keep_alive_delay;
+            bool keep_alive_enable;
+            std::chrono::seconds keep_alive_delay;
 
-    options();
-  };
+            options();
+        };
 
-  typedef std::function<void(char*, size_t)> io_on_read;
-  typedef std::function<void(uverr)> io_on_error;
-  typedef std::function<void()> on_close_cb;
-  typedef std::function<void(std::unique_ptr<tcp_socket>&,uverr)> on_accept_cb;
+        typedef std::function<void(char *, size_t)> io_on_read;
+        typedef std::function<void(uverr)> io_on_error;
+        typedef std::function<void()> on_close_cb;
+        typedef std::function<void(std::unique_ptr<tcp_socket> &, uverr)> on_accept_cb;
 
-  tcp_socket(kernel* k, options = {});
-  virtual ~tcp_socket();
+        tcp_socket(kernel *k, options = {});
 
-  tcp_socket(const tcp_socket&) = delete;
-  tcp_socket& operator=(const tcp_socket&) = delete;
+        virtual ~tcp_socket();
 
-  /** Request TCP connection to a remote end point, using IPv4 and allowing DNS
-   * resolution.  This should only be called on an uninitialised socket. */
-  std::future<uverr> connect(std::string addr, int port);
+        tcp_socket(const tcp_socket &) = delete;
 
-  /** Request TCP connection to a remote end point.  This should only be called
-   * on an uninitialised socket. */
-  std::future<uverr> connect(const std::string& node,
-                             const std::string& service,
-                             addr_family = addr_family::unspec,
-                             bool resolve_addr = true);
+        tcp_socket &operator=(const tcp_socket &) = delete;
 
-  /** Request socket begins reading inbound data, with callbacks make on the IO
-   * thread. */
-  virtual std::future<uverr> start_read(io_on_read, io_on_error);
+        /** Request TCP connection to a remote end point, using IPv4 and allowing DNS
+         * resolution.  This should only be called on an uninitialised socket. */
+        std::future<uverr> connect(std::string addr, int port);
 
-  /** Reset IO callbacks */
-  void reset_listener();
+        /** Request TCP connection to a remote end point.  This should only be called
+         * on an uninitialised socket. */
+        std::future<uverr> connect(const std::string &node,
+                                   const std::string &service,
+                                   addr_family = addr_family::unspec,
+                                   bool resolve_addr = true);
 
-  /** Initialise this tcp_socket by creating a listen socket that is bound to
-   * the specified end point. The user callback is called when an incoming
-   * connection request is accepted. Node can be the empty string, in which case
-   * the listen socket will accept incoming connections from all interfaces
-   * (i.e. INADDR_ANY). */
-  std::future<uverr> listen(const std::string& node, const std::string& service,
-                            on_accept_cb, addr_family = addr_family::unspec);
+        /** Request socket begins reading inbound data, with callbacks make on the IO
+         * thread. */
+        virtual std::future<uverr> start_read(io_on_read, io_on_error);
 
-  /* Request a write */
-  void write(std::pair<const char*, size_t>* srcbuf, size_t count);
-  void write(const char*, size_t);
+        /** Reset IO callbacks */
+        void reset_listener();
 
-  /** Request asynchronous socket close. To detect when close has occurred, the
-   * caller can wait upon the returned future.  Throws io_loop_closed if IO loop
-   * has already been closed. */
-  std::shared_future<void> close();
+        /** Initialise this tcp_socket by creating a listen socket that is bound to
+         * the specified end point. The user callback is called when an incoming
+         * connection request is accepted. Node can be the empty string, in which case
+         * the listen socket will accept incoming connections from all interfaces
+         * (i.e. INADDR_ANY). */
+        std::future<uverr> listen(const std::string &node, const std::string &service,
+                                  on_accept_cb, addr_family = addr_family::unspec);
 
-  /** Request asynchronous socket reset & close.  */
-  std::shared_future<void> reset();
+        /* Request a write */
+        void write(std::pair<const char *, size_t> *srcbuf, size_t count);
 
-  /** Request asynchronous socket close, and receive notification via the
-   * specified callback on the IO thread. If the tcp_socket is not currently
-   * closed then the provided callback is invoked at the time of socket closure
-   * and true is returned.  Otherwise, if the socket is already closed, the
-   * callback is never invoked and false is returned. Throws io_loop_closed if
-   * IO loop has already been closed. */
-  bool close(on_close_cb);
+        void write(const char *, size_t);
 
-  /** Obtain future that is set only when this tcp_socket is closed for future
-   * callback events.*/
-  std::shared_future<void> closed_future() const { return m_io_closed_future; }
+        /** Request asynchronous socket close. To detect when close has occurred, the
+         * caller can wait upon the returned future.  Throws io_loop_closed if IO loop
+         * has already been closed. */
+        std::shared_future<void> close();
 
-  bool is_connected() const;
-  bool is_connect_failed() const;
-  bool is_listening() const;
-  bool is_closing() const;
+        /** Request asynchronous socket reset & close.  */
+        std::shared_future<void> reset();
 
-  /** Return whether the instance has reached the closed state. */
-  bool is_closed() const;
+        /** Request asynchronous socket close, and receive notification via the
+         * specified callback on the IO thread. If the tcp_socket is not currently
+         * closed then the provided callback is invoked at the time of socket closure
+         * and true is returned.  Otherwise, if the socket is already closed, the
+         * callback is never invoked and false is returned. Throws io_loop_closed if
+         * IO loop has already been closed. */
+        bool close(on_close_cb);
 
-  /** Return whether this tcp_socket has been initialised, which means it is
-   * associated with an underlying socket file descriptor (until closed). */
-  bool is_initialised() const;
+        /** Obtain future that is set only when this tcp_socket is closed for future
+         * callback events.*/
+        std::shared_future<void> closed_future() const { return m_io_closed_future; }
 
-  /** Return description of the underlying file description, if one is currently
-   * associated with this tcp_socket. The first member of the pair indicates if
-   * the fd is available. */
-  std::pair<bool, std::string> fd_info() const;
+        bool is_connected() const;
 
-  size_t bytes_read() const { return m_bytes_read; }
-  size_t bytes_written() const { return m_bytes_written; }
+        bool is_connect_failed() const;
 
-  /** Return the node name, as provided during the connect / listen call. */
-  const std::string& node() const;
+        bool is_listening() const;
 
-  /** Return the service name, as provided during the connect / listen call. */
-  const std::string& service() const;
+        bool is_closing() const;
 
-  /** Return the socket local address. */
-  socket_address get_local_address();
+        /** Return whether the instance has reached the closed state. */
+        bool is_closed() const;
 
-  /** Return the socket local port. */
-  int get_local_port();
+        /** Return whether this tcp_socket has been initialised, which means it is
+         * associated with an underlying socket file descriptor (until closed). */
+        bool is_initialised() const;
 
-  /** Return the socket peer address. */
-  socket_address get_peer_address();
+        /** Return description of the underlying file description, if one is currently
+         * associated with this tcp_socket. The first member of the pair indicates if
+         * the fd is available. */
+        std::pair<bool, std::string> fd_info() const;
 
-  /** Return the socket peer port. */
-  int get_peer_port();
+        size_t bytes_read() const { return m_bytes_read; }
 
-  const kernel* get_kernel() const { return m_kernel; }
-  kernel* get_kernel() { return m_kernel; }
+        size_t bytes_written() const { return m_bytes_written; }
 
-protected:
+        /** Return the node name, as provided during the connect / listen call. */
+        const std::string &node() const;
 
-  enum class socket_state {
-    uninitialised,
-    connecting,
-    connected,
-    connect_failed,
-    listening,
-    closing,
-    closed
-  };
+        /** Return the service name, as provided during the connect / listen call. */
+        const std::string &service() const;
 
-  tcp_socket(kernel* k, uv_tcp_t*, socket_state ss, options);
+        /** Return the socket local address. */
+        socket_address get_local_address();
 
-  virtual void handle_read_bytes(ssize_t, const uv_buf_t*);
-  virtual void service_pending_write();
-  virtual tcp_socket* create(kernel*, uv_tcp_t*, socket_state, options);
+        /** Return the socket local port. */
+        int get_local_port();
 
-  typedef std::function<std::unique_ptr<tcp_socket>(uverr ec,  uv_tcp_t* h)> acceptor_fn_t;
-  void do_write(std::vector<uv_buf_t>&);
-  std::future<uverr> listen_impl(const std::string&,const std::string&,
-                                 addr_family, acceptor_fn_t);
+        /** Return the socket peer address. */
+        socket_address get_peer_address();
 
-  kernel* m_kernel;
-  logger& __logger;
+        /** Return the socket peer port. */
+        int get_peer_port();
 
-  options m_sockopts;
+        const kernel *get_kernel() const { return m_kernel; }
 
-  /* Store of user requests to write bytes. These are queued until serviced by
-   * the IO thread, via service_pending_write(). */
-  std::vector<uv_buf_t> m_pending_write;
-  std::mutex            m_pending_write_lock;
+        kernel *get_kernel() { return m_kernel; }
 
-  /* User callbacks. */
-  io_on_read m_io_on_read;
-  io_on_error m_io_on_error;
+    protected:
 
-  socket_state m_state;
-  mutable std::mutex m_state_lock;
+        enum class socket_state {
+            uninitialised,
+            connecting,
+            connected,
+            connect_failed,
+            listening,
+            closing,
+            closed
+        };
 
-  mutable std::mutex m_details_lock;
-  std::string m_node;
-  std::string m_service;
+        tcp_socket(kernel *k, uv_tcp_t *, socket_state ss, options);
 
-private:
-  void close_impl();
+        virtual void handle_read_bytes(ssize_t, const uv_buf_t *);
 
-  static const char * to_string(tcp_socket::socket_state);
+        virtual void service_pending_write();
 
-  void on_read_cb(ssize_t, const uv_buf_t*);
-  void on_write_cb(uv_write_t*, int);
-  void close_once_on_io();
-  void do_write();
-  void begin_close(bool no_linger = false);
-  void do_listen(const std::string&, const std::string&, addr_family,
-                 std::shared_ptr<std::promise<uverr>>);
-  void do_connect(const std::string&, const std::string&, addr_family, bool,
-                  std::shared_ptr<std::promise<uverr>>);
-  void connect_completed(uverr, std::shared_ptr<std::promise<uverr>>,
-                         uv_tcp_t*);
-  void on_listen_cb(int);
+        virtual tcp_socket *create(kernel *, uv_tcp_t *, socket_state, options);
 
-  void apply_socket_options(bool);
+        typedef std::function<std::unique_ptr<tcp_socket>(uverr ec, uv_tcp_t *h)> acceptor_fn_t;
 
-  uv_tcp_t* m_uv_tcp;
+        void do_write(std::vector<uv_buf_t> &);
 
-  std::unique_ptr<std::promise<void>> m_io_closed_promise;
-  std::shared_future<void> m_io_closed_future;
+        std::future<uverr> listen_impl(const std::string &, const std::string &,
+                                       addr_family, acceptor_fn_t);
 
-  std::atomic<size_t> m_bytes_pending_write;
-  size_t m_bytes_written;
-  size_t m_bytes_read;
+        kernel *m_kernel;
+        logger &__logger;
 
-  on_close_cb m_user_close_fn;
+        options m_sockopts;
 
-  std::shared_ptr<tcp_socket> m_self;
+        /* Store of user requests to write bytes. These are queued until serviced by
+         * the IO thread, via service_pending_write(). */
+        std::vector<uv_buf_t> m_pending_write;
+        std::mutex m_pending_write_lock;
 
-  /* Handler for creating a new instance when a socket is accepted. */
-  acceptor_fn_t m_accept_fn;
+        /* User callbacks. */
+        io_on_read m_io_on_read;
+        io_on_error m_io_on_error;
 
-  friend io_loop;
-};
+        socket_state m_state;
+        mutable std::mutex m_state_lock;
+
+        mutable std::mutex m_details_lock;
+        std::string m_node;
+        std::string m_service;
+
+    private:
+        void close_impl();
+
+        static const char *to_string(tcp_socket::socket_state);
+
+        void on_read_cb(ssize_t, const uv_buf_t *);
+
+        void on_write_cb(uv_write_t *, int);
+
+        void close_once_on_io();
+
+        void do_write();
+
+        void begin_close(bool no_linger = false);
+
+        void do_listen(const std::string &, const std::string &, addr_family,
+                       std::shared_ptr<std::promise<uverr>>);
+
+        void do_connect(const std::string &, const std::string &, addr_family, bool,
+                        std::shared_ptr<std::promise<uverr>>);
+
+        void connect_completed(uverr, std::shared_ptr<std::promise<uverr>>,
+                               uv_tcp_t *);
+
+        void on_listen_cb(int);
+
+        void apply_socket_options(bool);
+
+        uv_tcp_t *m_uv_tcp;
+
+        std::unique_ptr<std::promise<void>> m_io_closed_promise;
+        std::shared_future<void> m_io_closed_future;
+
+        std::atomic<size_t> m_bytes_pending_write;
+        size_t m_bytes_written;
+        size_t m_bytes_read;
+
+        on_close_cb m_user_close_fn;
+
+        std::shared_ptr<tcp_socket> m_self;
+
+        /* Handler for creating a new instance when a socket is accepted. */
+        acceptor_fn_t m_accept_fn;
+
+        friend io_loop;
+    };
 
 } // namespace wampcc
 

@@ -16,84 +16,90 @@
 struct http_parser;
 struct http_parser_settings;
 
-namespace wampcc
-{
+namespace wampcc {
 
-class http_parser
-{
-public:
-  static constexpr unsigned int status_code_switching_protocols = 101;
+    class http_parser {
+    public:
+        static constexpr unsigned int status_code_switching_protocols = 101;
 
-  enum parser_type { e_http_request, e_http_response };
+        enum parser_type {
+            e_http_request, e_http_response
+        };
 
-  static bool is_http_get(const char* s, size_t n)
-  {
-    return n > 3 && s[0] == 'G' && s[1] == 'E' && s[2] == 'T' && isspace(s[3]);
-  }
+        static bool is_http_get(const char *s, size_t n) {
+            return n > 3 && s[0] == 'G' && s[1] == 'E' && s[2] == 'T' && isspace(s[3]);
+        }
 
-  http_parser(parser_type);
-  ~http_parser();
+        http_parser(parser_type);
 
-  static constexpr const unsigned char HEADER_SIZE = 4; /* "GET " */
+        ~http_parser();
 
-  size_t handle_input(char* const, size_t const);
+        static constexpr const unsigned char HEADER_SIZE = 4; /* "GET " */
 
-  /** have we completed parsing headers? */
-  bool is_complete() const { return m_state == eComplete; }
+        size_t handle_input(char *const, size_t const);
 
-  /** does header indicate connection upgrade? */
-  bool is_upgrade() const;
+        /** have we completed parsing headers? */
+        bool is_complete() const { return m_state == eComplete; }
 
-  /** access the http-parser error code (see nodejs|http_parser.h for codes) */
-  unsigned int error() const;
+        /** does header indicate connection upgrade? */
+        bool is_upgrade() const;
 
-  /** return string associated with any error */
-  std::string error_text() const;
+        /** access the http-parser error code (see nodejs|http_parser.h for codes) */
+        unsigned int error() const;
 
-  /** does http-parser error indicate success? */
-  bool is_good() const;
+        /** return string associated with any error */
+        std::string error_text() const;
 
-  /** is field present in headers? field should be lowercase */
-  bool has(const char* s) const { return m_headers.find(s) != m_headers.end(); }
+        /** does http-parser error indicate success? */
+        bool is_good() const;
 
-  /** return header field, otherwise throw; field should be lowercase */
-  const std::string& get(const std::string& field) const
-  {
-    auto it = m_headers.find(field);
-    if (it != m_headers.end())
-      return it->second;
-    else
-      throw std::runtime_error("http header field not found");
-  }
+        /** is field present in headers? field should be lowercase */
+        bool has(const char *s) const { return m_headers.find(s) != m_headers.end(); }
 
-  /* HTTP response status-line textual phrase */
-  const std::string& http_status_phrase() const { return m_http_status; }
+        /** return header field, otherwise throw; field should be lowercase */
+        const std::string &get(const std::string &field) const {
+            auto it = m_headers.find(field);
+            if (it != m_headers.end())
+                return it->second;
+            else
+                throw std::runtime_error("http header field not found");
+        }
 
-  /* HTTP response status-line code */
-  unsigned int http_status_code() const { return m_http_status_code; }
+        /* HTTP response status-line textual phrase */
+        const std::string &http_status_phrase() const { return m_http_status; }
 
-private:
-  void store_current_header_field();
-  int on_headers_complete();
-  int on_url(const char* s, size_t n);
-  int on_header_field(const char* s, size_t n);
-  int on_header_value(const char* s, size_t n);
-  int on_status(const char* s, size_t n);
+        /* HTTP response status-line code */
+        unsigned int http_status_code() const { return m_http_status_code; }
 
-  std::map<std::string, std::string> m_headers;
+    private:
+        void store_current_header_field();
 
-  std::unique_ptr<::http_parser_settings> m_settings;
-  std::unique_ptr<::http_parser> m_parser;
+        int on_headers_complete();
 
-  enum state { eParsingField = 0, eParsingValue, eComplete };
-  state m_state = eParsingField;
+        int on_url(const char *s, size_t n);
 
-  std::string m_current_field;
-  std::string m_current_value;
+        int on_header_field(const char *s, size_t n);
 
-  unsigned int m_http_status_code;
-  std::string m_http_status;
-};
+        int on_header_value(const char *s, size_t n);
+
+        int on_status(const char *s, size_t n);
+
+        std::map<std::string, std::string> m_headers;
+
+        std::unique_ptr<::http_parser_settings> m_settings;
+        std::unique_ptr<::http_parser> m_parser;
+
+        enum state {
+            eParsingField = 0, eParsingValue, eComplete
+        };
+        state m_state = eParsingField;
+
+        std::string m_current_field;
+        std::string m_current_value;
+
+        unsigned int m_http_status_code;
+        std::string m_http_status;
+    };
 }
 
 

@@ -7,17 +7,15 @@
 
 #include "wampcc/websocketpp_impl.h"
 
-namespace wampcc
-{
+namespace wampcc {
 
-std::string websocketpp_impl::frame_to_string(
-    const websocket_config::message_type::ptr& ptr)
-{
-  std::ostringstream oss;
-  oss <<"fin " << ptr->get_fin() <<
-    ", opcode " << ptr->get_opcode() <<
-    ", payload_len " << ptr->get_payload().size();
-  return oss.str();
-}
+    std::string websocketpp_impl::frame_to_string(
+            const websocket_config::message_type::ptr &ptr) {
+        std::ostringstream oss;
+        oss << "fin " << ptr->get_fin() <<
+            ", opcode " << ptr->get_opcode() <<
+            ", payload_len " << ptr->get_payload().size();
+        return oss.str();
+    }
 
 }

@@ -9,16 +9,14 @@
 
 #include <uv.h>
 
-namespace wampcc
-{
+namespace wampcc {
 
-const char* uverr::message() const
-{
-  if (m_value == 0)
-    return "";
-  else {
-    const char* s = uv_strerror(m_value); /* Can leak memory */
-    return s ? s : "unknown";
-  }
-}
+    const char *uverr::message() const {
+        if (m_value == 0)
+            return "";
+        else {
+            const char *s = uv_strerror(m_value); /* Can leak memory */
+            return s ? s : "unknown";
+        }
+    }
 }

@@ -16,21 +16,20 @@ This file contains various public utilites helpful to WAMP applications.
 
 #include <string>
 
-namespace wampcc
-{
+namespace wampcc {
 
-struct uri_parts {
-  std::string protocol;
-  std::string domain;
-  std::string port;
-  std::string path;
-  std::string query;
-  std::string fragment;
+    struct uri_parts {
+        std::string protocol;
+        std::string domain;
+        std::string port;
+        std::string path;
+        std::string query;
+        std::string fragment;
 
-  /** Parse the supplied URI string into its separate parts.  If the URI is
-   * invalid, throws runtime_error. */
-  static uri_parts parse(const std::string&);
-};
+        /** Parse the supplied URI string into its separate parts.  If the URI is
+         * invalid, throws runtime_error. */
+        static uri_parts parse(const std::string &);
+    };
 
 } // namespace wampcc
 

@@ -13,9 +13,11 @@
 #include <thread>
 
 #ifndef _WIN32
+
 #include <unistd.h>
 #include <sys/syscall.h> /* For SYS_xxx definitions */
 #include <sys/utsname.h>
+
 #else
 #include <Windows.h>
 #ifdef WIN32_LEAN_AND_MEAN
@@ -23,71 +25,67 @@
 #endif
 #endif
 
-namespace wampcc
-{
+namespace wampcc {
 
-int thread_id()
-{
+    int thread_id() {
 #ifndef _WIN32
-  /* On Linux the thread-id returned via syscall is more useful than that C++
-   * get_id(), since it will correspond to the values reported by top and other
-   * tools. */
-  return syscall(SYS_gettid);
+        /* On Linux the thread-id returned via syscall is more useful than that C++
+         * get_id(), since it will correspond to the values reported by top and other
+         * tools. */
+        return syscall(SYS_gettid);
 #else
-  return GetCurrentThreadId();
+        return GetCurrentThreadId();
 #endif
-}
+    }
 
 
-time_val time_now()
-{
+    time_val time_now() {
 #ifndef _WIN32
-  timeval epoch;
-  gettimeofday(&epoch, nullptr);
-  return {epoch.tv_sec, epoch.tv_usec};
+        timeval epoch;
+        gettimeofday(&epoch, nullptr);
+        return {epoch.tv_sec, epoch.tv_usec};
 #else
-  SYSTEMTIME systime;
-  GetSystemTime(&systime); // obtain milliseconds
-  time_val::type_type now;
-  time(&now); // seconds elapsed since midnight January 1, 1970
-  time_val tv_systime{now, systime.wMilliseconds * 1000};
+        SYSTEMTIME systime;
+        GetSystemTime(&systime); // obtain milliseconds
+        time_val::type_type now;
+        time(&now); // seconds elapsed since midnight January 1, 1970
+        time_val tv_systime{now, systime.wMilliseconds * 1000};
 
-  /* C++11 chrono approach */
-  /*
-  auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::system_clock::now().time_since_epoch()).count();
-  time_val tv_chrono{ts / 1000000LL, ts % 1000000LL};
-  */
+        /* C++11 chrono approach */
+        /*
+        auto ts = std::chrono::duration_cast<std::chrono::microseconds>(
+                      std::chrono::system_clock::now().time_since_epoch()).count();
+        time_val tv_chrono{ts / 1000000LL, ts % 1000000LL};
+        */
 
-  /* Windows FILETIME approach, has actual usec accuracy */
-  /*
-  FILETIME ft;
-  GetSystemTimeAsFileTime(&ft);
-  time_val::type_type tt = ft.dwHighDateTime;
-  tt <<= 32;
-  tt |= ft.dwLowDateTime;
-  tt /= 10;
-  tt -= 11644473600000000ULL;
-  time_val tv_filetime{tt / 1000000LL, tt % 1000000LL};
-  */
+        /* Windows FILETIME approach, has actual usec accuracy */
+        /*
+        FILETIME ft;
+        GetSystemTimeAsFileTime(&ft);
+        time_val::type_type tt = ft.dwHighDateTime;
+        tt <<= 32;
+        tt |= ft.dwLowDateTime;
+        tt /= 10;
+        tt -= 11644473600000000ULL;
+        time_val tv_filetime{tt / 1000000LL, tt % 1000000LL};
+        */
 
-  return tv_systime;
+        return tv_systime;
 #endif
-}
+    }
 
 
-std::string hostname()
-{
+    std::string hostname() {
 #ifndef _WIN32
-  struct utsname buffer;
-  if (uname(&buffer) != 0)
-    throw std::runtime_error("uname failed");
-  return buffer.nodename;
+        struct utsname buffer;
+        if (uname(&buffer) != 0)
+            throw std::runtime_error("uname failed");
+        return buffer.nodename;
 #else
-  char temp[256];
-  gethostname(temp, sizeof(temp));
-  return temp;
+        char temp[256];
+        gethostname(temp, sizeof(temp));
+        return temp;
 #endif
-}
+    }
 
 } // wampcc

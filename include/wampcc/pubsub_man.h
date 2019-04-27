@@ -15,55 +15,57 @@
 #include <map>
 #include <memory>
 
-namespace wampcc
-{
+namespace wampcc {
 
-struct logger;
-class managed_topic;
-class wamp_session;
-class kernel;
+    struct logger;
 
-class pubsub_man
-{
-public:
-  pubsub_man(kernel*);
-  ~pubsub_man();
+    class managed_topic;
 
-  /* Publish to a topic */
-  t_publication_id publish(std::string realm, std::string uri,
-                           json_object options, wamp_args);
+    class wamp_session;
 
-  uint64_t subscribe(wamp_session* ptr, t_request_id, std::string uri,
-                     json_object& options);
+    class kernel;
 
-  void unsubscribe(wamp_session*, t_request_id, t_subscription_id);
+    class pubsub_man {
+    public:
+        pubsub_man(kernel *);
 
-  void session_closed(session_handle sh);
+        ~pubsub_man();
 
-  json_array get_topics(const std::string& realm) const;
+        /* Publish to a topic */
+        t_publication_id publish(std::string realm, std::string uri,
+                                 json_object options, wamp_args);
 
-private:
-  pubsub_man(const pubsub_man&);            // no copy
-  pubsub_man& operator=(const pubsub_man&); // no assignment
+        uint64_t subscribe(wamp_session *ptr, t_request_id, std::string uri,
+                           json_object &options);
 
-  managed_topic* find_topic(const std::string& topic, const std::string& realm,
-                            bool allow_create);
+        void unsubscribe(wamp_session *, t_request_id, t_subscription_id);
+
+        void session_closed(session_handle sh);
+
+        json_array get_topics(const std::string &realm) const;
+
+    private:
+        pubsub_man(const pubsub_man &);            // no copy
+        pubsub_man &operator=(const pubsub_man &); // no assignment
+
+        managed_topic *find_topic(const std::string &topic, const std::string &realm,
+                                  bool allow_create);
 
 
-  t_publication_id update_topic(const std::string& topic, const std::string& realm,
-                                json_object options, wamp_args args);
+        t_publication_id update_topic(const std::string &topic, const std::string &realm,
+                                      json_object options, wamp_args args);
 
-  logger& __logger; /* name chosen for log macros */
+        logger &__logger; /* name chosen for log macros */
 
-  mutable std::mutex m_lock;
+        mutable std::mutex m_lock;
 
-  typedef std::map<std::string, std::unique_ptr<managed_topic>> topic_registry;
-  typedef std::map<std::string, topic_registry> realm_to_topicreg;
-  typedef std::map<t_subscription_id, managed_topic*> subscriptionid_registry;
-  realm_to_topicreg m_topics;
-  t_subscription_id m_next_subscription_id;
-  subscriptionid_registry m_subscription_registry;
-};
+        typedef std::map<std::string, std::unique_ptr<managed_topic>> topic_registry;
+        typedef std::map<std::string, topic_registry> realm_to_topicreg;
+        typedef std::map<t_subscription_id, managed_topic *> subscriptionid_registry;
+        realm_to_topicreg m_topics;
+        t_subscription_id m_next_subscription_id;
+        subscriptionid_registry m_subscription_registry;
+    };
 
 } // namespace wampcc
 

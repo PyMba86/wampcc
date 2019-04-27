@@ -16,8 +16,7 @@
 #include <memory>
 #include <stdint.h>
 
-namespace wampcc
-{
+namespace wampcc {
 
 // WAMP defined error messages
 #define WAMP_ERROR_AUTHENTICATION_FAILED "wamp.error.authentication_failed"
@@ -59,89 +58,85 @@ namespace wampcc
 #define WAMP_REFLECTION_PROCEDURE_LIST "wamp.reflection.procedure.list"
 #define WAMP_REFLECTION_ERROR_LIST "wamp.reflection.error.list"
 
-  enum msg_type
-  {
-    wamp_msg_undef = 0,
-    wamp_msg_hello = 1,
-    wamp_msg_welcome = 2,
-    wamp_msg_abort = 3,
-    wamp_msg_challenge = 4,
-    wamp_msg_authenticate = 5,
-    wamp_msg_goodbye = 6,
-    wamp_msg_heartbeat = 7,
-    wamp_msg_error = 8,
-    wamp_msg_publish = 16,
-    wamp_msg_published = 17,
-    wamp_msg_subscribe = 32,
-    wamp_msg_subscribed = 33,
-    wamp_msg_unsubscribe = 34,
-    wamp_msg_unsubscribed = 35,
-    wamp_msg_event = 36,
-    wamp_msg_call = 48,
-    wamp_msg_cancel = 49,
-    wamp_msg_result = 50,
-    wamp_msg_register = 64,
-    wamp_msg_registered = 65,
-    wamp_msg_unregister = 66,
-    wamp_msg_unregistered = 67,
-    wamp_msg_invocation = 68,
-    wamp_msg_interrupt = 69,
-    wamp_msg_yield = 70
-  };
+    enum msg_type {
+        wamp_msg_undef = 0,
+        wamp_msg_hello = 1,
+        wamp_msg_welcome = 2,
+        wamp_msg_abort = 3,
+        wamp_msg_challenge = 4,
+        wamp_msg_authenticate = 5,
+        wamp_msg_goodbye = 6,
+        wamp_msg_heartbeat = 7,
+        wamp_msg_error = 8,
+        wamp_msg_publish = 16,
+        wamp_msg_published = 17,
+        wamp_msg_subscribe = 32,
+        wamp_msg_subscribed = 33,
+        wamp_msg_unsubscribe = 34,
+        wamp_msg_unsubscribed = 35,
+        wamp_msg_event = 36,
+        wamp_msg_call = 48,
+        wamp_msg_cancel = 49,
+        wamp_msg_result = 50,
+        wamp_msg_register = 64,
+        wamp_msg_registered = 65,
+        wamp_msg_unregister = 66,
+        wamp_msg_unregistered = 67,
+        wamp_msg_invocation = 68,
+        wamp_msg_interrupt = 69,
+        wamp_msg_yield = 70
+    };
 
-typedef uint64_t t_session_id;
-typedef uint64_t t_request_id;
-typedef uint64_t t_subscription_id;
-typedef uint64_t t_publication_id;
-typedef uint64_t t_registration_id;
+    typedef uint64_t t_session_id;
+    typedef uint64_t t_request_id;
+    typedef uint64_t t_subscription_id;
+    typedef uint64_t t_publication_id;
+    typedef uint64_t t_registration_id;
 
-class wamp_session;
-typedef std::weak_ptr<wamp_session> session_handle;
+    class wamp_session;
 
-struct wamp_args
-{
-  json_array  args_list;
-  json_object args_dict;
+    typedef std::weak_ptr<wamp_session> session_handle;
 
-  bool operator==(const wamp_args& rhs) const {
-    return (args_list == rhs.args_list) && (args_dict == rhs.args_dict);
-  }
+    struct wamp_args {
+        json_array args_list;
+        json_object args_dict;
 
-  bool operator!=(const wamp_args& rhs) const {
-    return (args_list != rhs.args_list) || (args_dict != rhs.args_dict);
-  }
-};
+        bool operator==(const wamp_args &rhs) const {
+            return (args_list == rhs.args_list) && (args_dict == rhs.args_dict);
+        }
+
+        bool operator!=(const wamp_args &rhs) const {
+            return (args_list != rhs.args_list) || (args_dict != rhs.args_dict);
+        }
+    };
 
 /* Represent the mode of a socket or wamp connection */
-enum class connect_mode
-{
-  active,
-  passive
-};
+    enum class connect_mode {
+        active,
+        passive
+    };
 
 /* Bit-flags for message serialisation types supported by WAMP */
-enum class serialiser_type
-{
-  none = 0x00,
-  json = 0x01,
-  msgpack = 0x02
-};
+    enum class serialiser_type {
+        none = 0x00,
+        json = 0x01,
+        msgpack = 0x02
+    };
 
-constexpr int all_serialisers =
-  static_cast<int>(serialiser_type::json) |
-  static_cast<int>(serialiser_type::msgpack);
+    constexpr int all_serialisers =
+            static_cast<int>(serialiser_type::json) |
+            static_cast<int>(serialiser_type::msgpack);
 
 /* Bit-flags for supported protocols */
-enum class protocol_type
-{
-  none = 0x00,
-  websocket = 0x01,
-  rawsocket = 0x02
-};
+    enum class protocol_type {
+        none = 0x00,
+        websocket = 0x01,
+        rawsocket = 0x02
+    };
 
-constexpr int all_protocols =
-  static_cast<int>(protocol_type::websocket) |
-  static_cast<int>(protocol_type::rawsocket);
+    constexpr int all_protocols =
+            static_cast<int>(protocol_type::websocket) |
+            static_cast<int>(protocol_type::rawsocket);
 
 } // namespace
 

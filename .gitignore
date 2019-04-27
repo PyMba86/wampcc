@@ -85,3 +85,5 @@ Makefile.in
 
 # out-of-source builds for cmake
 build/
+cmake-build-debug
+*.idea

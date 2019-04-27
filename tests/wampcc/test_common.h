@@ -8,7 +8,7 @@
 #include "wampcc/rawsocket_protocol.h"
 #include "wampcc/wamp_router.h"
 #include "wampcc/event_loop.h"
-#include "3rdparty/apache/base64.h"
+#include "apache/base64.h"
 
 #include <iostream>
 #include <chrono>

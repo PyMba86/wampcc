@@ -12,7 +12,7 @@
 
 #include <sstream>
 
-#define LOGIMPL( X, LEVEL )                                             \
+#define LOGIMPL(X, LEVEL)                                             \
   do {                                                                  \
     if ( __logger.wants_level &&                                        \
          __logger.write &&                                              \
@@ -24,24 +24,24 @@
     }                                                                   \
   } while (false)
 
-#define LOG_FOR_LEVEL( LEVEL )                                        \
+#define LOG_FOR_LEVEL(LEVEL)                                        \
   ( __logger.wants_level &&                                           \
     __logger.write &&                                                 \
     __logger.wants_level(LEVEL))
 
-#define LOG_INFO( X )                           \
+#define LOG_INFO(X)                           \
   LOGIMPL( X, wampcc::logger::eInfo )
 
-#define LOG_WARN( X )                           \
+#define LOG_WARN(X)                           \
   LOGIMPL( X, wampcc::logger::eWarn )
 
-#define LOG_ERROR( X )                          \
+#define LOG_ERROR(X)                          \
   LOGIMPL( X, wampcc::logger::eError )
 
-#define LOG_DEBUG( X )                          \
+#define LOG_DEBUG(X)                          \
   LOGIMPL( X, wampcc::logger::eDebug )
 
-#define LOG_TRACE( X )                          \
+#define LOG_TRACE(X)                          \
   LOGIMPL( X, wampcc::logger::eTrace )
 
 

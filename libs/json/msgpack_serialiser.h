@@ -12,35 +12,34 @@
 
 #include "msgpack.hpp"
 
-namespace wampcc
-{
+namespace wampcc {
 
-class msgpack_encoder
-{
-public:
-  msgpack_encoder();
-  std::unique_ptr<region, void(*)(region*)> encode(const json_value &);
+    class msgpack_encoder {
+    public:
+        msgpack_encoder();
 
-private:
-  msgpack::sbuffer m_sbuf;
-  msgpack::packer<msgpack::sbuffer> m_packer;
+        std::unique_ptr<region, void (*)(region *)> encode(const json_value &);
 
-  void pack_array(const json_array &);
-  void pack_object(const json_object &);
-  void pack_value(const json_value&);
-  void pack_string(const std::string&);
-};
+    private:
+        msgpack::sbuffer m_sbuf;
+        msgpack::packer<msgpack::sbuffer> m_packer;
 
+        void pack_array(const json_array &);
 
-class msgpack_decoder
-{
-public:
-  json_value result;
+        void pack_object(const json_object &);
 
-  bool decode(const char *, size_t);
-};
+        void pack_value(const json_value &);
+
+        void pack_string(const std::string &);
+    };
 
 
+    class msgpack_decoder {
+    public:
+        json_value result;
+
+        bool decode(const char *, size_t);
+    };
 
 
 }

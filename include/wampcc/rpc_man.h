@@ -20,72 +20,74 @@
 #include <memory>
 #include <list>
 
-namespace wampcc
-{
+namespace wampcc {
 
-class event_loop;
-struct logger;
-class kernel;
+    class event_loop;
 
-struct rpc_details
-{
-  enum { eInternal, eRemote } type;
+    struct logger;
 
-  uint64_t registration_id; // 0 implies invalid
-  std::string uri;
-  session_handle session;
-  on_call_fn user_cb; // applies only for eInternal
-  void* user;         // applies only for eInternal
-  rpc_details() : registration_id(0), user(nullptr) {}
-};
+    class kernel;
 
-typedef std::function<void(const rpc_details&)> rpc_added_cb;
+    struct rpc_details {
+        enum {
+            eInternal, eRemote
+        } type;
 
-class rpc_man
-{
-public:
-  rpc_man(kernel*, rpc_added_cb);
+        uint64_t registration_id; // 0 implies invalid
+        std::string uri;
+        session_handle session;
+        on_call_fn user_cb; // applies only for eInternal
+        void *user;         // applies only for eInternal
+        rpc_details() : registration_id(0), user(nullptr) {}
+    };
 
-  void handle_inbound_register(wamp_session&, t_request_id, const std::string&);
+    typedef std::function<void(const rpc_details &)> rpc_added_cb;
 
-  void handle_inbound_unregister(wamp_session&, t_request_id,
-                                 t_registration_id);
+    class rpc_man {
+    public:
+        rpc_man(kernel *, rpc_added_cb);
 
-  uint64_t register_internal_rpc(const std::string& realm,
-                                 const std::string& uri, on_call_fn,
-                                 void* user);
+        void handle_inbound_register(wamp_session &, t_request_id, const std::string &);
 
-  rpc_details get_rpc_details(const std::string& rpcname,
-                              const std::string& realm);
+        void handle_inbound_unregister(wamp_session &, t_request_id,
+                                       t_registration_id);
 
-  void session_closed(std::shared_ptr<wamp_session>&);
+        uint64_t register_internal_rpc(const std::string &realm,
+                                       const std::string &uri, on_call_fn,
+                                       void *user);
 
-  json_array get_procedures(const std::string& realm) const;
+        rpc_details get_rpc_details(const std::string &rpcname,
+                                    const std::string &realm);
 
-private:
-  rpc_man(const rpc_man&) = delete;
-  rpc_man& operator=(const rpc_man&) = delete;
+        void session_closed(std::shared_ptr<wamp_session> &);
 
-  void register_rpc(session_handle, std::string realm, rpc_details& r);
+        json_array get_procedures(const std::string &realm) const;
 
-  logger& __logger; /* name chosen for log macros */
-  rpc_added_cb m_rpc_added_cb;
+    private:
+        rpc_man(const rpc_man &) = delete;
 
-  mutable std::mutex m_rpc_map_lock;
+        rpc_man &operator=(const rpc_man &) = delete;
 
-  uint64_t m_next_regid;
+        void register_rpc(session_handle, std::string realm, rpc_details &r);
 
-  typedef std::map<t_registration_id, std::shared_ptr<rpc_details>>
-      map_id_to_rpc;
-  typedef std::map<std::string, std::shared_ptr<rpc_details>> map_uri_to_rpc;
+        logger &__logger; /* name chosen for log macros */
+        rpc_added_cb m_rpc_added_cb;
 
-  // map from realm to rpc-by-uri map
-  std::map<std::string, map_uri_to_rpc> m_realm_registry;
+        mutable std::mutex m_rpc_map_lock;
 
-  // map from session to rpc-by-id map
-  std::map<session_handle, map_id_to_rpc, std::owner_less<session_handle>>
-      m_session_to_rpcs;
-};
+        uint64_t m_next_regid;
+
+        typedef std::map<t_registration_id, std::shared_ptr<rpc_details>>
+                map_id_to_rpc;
+        typedef std::map<std::string, std::shared_ptr<rpc_details>> map_uri_to_rpc;
+
+        // map from realm to rpc-by-uri map
+        std::map<std::string, map_uri_to_rpc> m_realm_registry;
+
+        // map from session to rpc-by-id map
+        std::map<session_handle, map_id_to_rpc, std::owner_less<session_handle>>
+                m_session_to_rpcs;
+    };
 
 } // namespace wampcc
 

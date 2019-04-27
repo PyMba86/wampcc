@@ -16,1124 +16,1075 @@
 
 #include <assert.h>
 
-namespace wampcc
-{
+namespace wampcc {
 
-constexpr std::chrono::seconds tcp_socket::options::default_keep_alive_delay;
+    constexpr std::chrono::seconds tcp_socket::options::default_keep_alive_delay;
 
-tcp_socket_guard::tcp_socket_guard(std::unique_ptr<tcp_socket>& __sock)
-  : sock(__sock)
-{
-}
-
-tcp_socket_guard::~tcp_socket_guard()
-{
-  /* If the tcp_socket object still exists (and so it headed for deletion), is
-   * not closed, and current thread is the IO thread, then takeaway ownerhip
-   * from the reference-target and request close & deletion via the IO
-   * thread. This has to be done because it is not safe to delete an un-closed
-   * tcp_socket via the IO thread. */
-  if (sock && !sock->is_closed() &&
-      sock->get_kernel()->get_io()->this_thread_is_io()) {
-    tcp_socket* ptr = sock.release();
-    ptr->close([ptr]() { delete ptr; });
-  }
-}
-
-const char * tcp_socket::to_string(socket_state s)
- {
-   switch (s)
-   {
-     case socket_state::uninitialised : return "uninitialised";
-     case socket_state::connecting : return "connecting";
-     case socket_state::connected: return "connected";
-     case socket_state::connect_failed: return "connect_failed";
-     case socket_state::listening: return "listening";
-     case socket_state::closing: return "closing";
-     case socket_state::closed: return "closed";
-   }
-   return "unknown";
- }
-
-struct write_req
-{
-  // C style polymorphism. The uv_write_t must be first member.
-  uv_write_t req;
-  uv_buf_t* bufs;
-  size_t nbufs;
-  size_t total_bytes;
-  write_req(size_t n, size_t total)
-    : bufs(new uv_buf_t[n]), nbufs(n), total_bytes(total) {}
-
-  ~write_req()
-  {
-    for (size_t i = 0; i < nbufs; i++)
-      delete [] bufs[i].base;
-    delete[] bufs;
-  }
-
-  write_req(const write_req&) = delete;
-  write_req& operator=(const write_req&) = delete;
-};
-
-
-static void iohandle_alloc_buffer(uv_handle_t* /* handle */,
-                                  size_t suggested_size, uv_buf_t* buf)
-{
-  // improve memory efficiency
-  *buf = uv_buf_init((char*)new char[suggested_size], suggested_size);
-}
-
-
-tcp_socket::options::options()
-  : tcp_no_delay_enable(default_tcp_no_delay_enable),
-    keep_alive_enable(default_keep_alive_enable),
-    keep_alive_delay(default_keep_alive_delay) {
-}
-
-
-tcp_socket::tcp_socket(kernel* k, uv_tcp_t* h, socket_state ss,
-                       options opts)
-  : m_kernel(k),
-    __logger(k->get_logger()),
-    m_sockopts(opts),
-    m_state(ss),
-    m_uv_tcp(h),
-    m_io_closed_promise(new std::promise<void>),
-    m_io_closed_future(m_io_closed_promise->get_future()),
-    m_bytes_pending_write(0),
-    m_bytes_written(0),
-    m_bytes_read(0),
-    m_self (this, [](tcp_socket*){/* null deleter */})
-{
-  if (m_uv_tcp) {
-    assert(m_uv_tcp->data == nullptr);
-    m_uv_tcp->data = new handle_data(this);
-
-    // established-socket is ready, so apply options
-    apply_socket_options(false);
-  }
-}
-
-
-tcp_socket::tcp_socket(kernel* k, options opts)
-  : tcp_socket(k, nullptr, socket_state::uninitialised, opts)
-{
-}
-
-
-tcp_socket::~tcp_socket()
-{
-  bool io_loop_ended = false;
-
-  {
-    /* Optionally initiate close */
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    if ((m_state != socket_state::closing) &&
-        (m_state != socket_state::closed)) {
-
-      m_state = socket_state::closing;
-
-      try {
-        m_kernel->get_io()->push_fn([this]() { this->begin_close(); });
-      } catch (io_loop_closed&) {
-        io_loop_ended = true;
-      }
+    tcp_socket_guard::tcp_socket_guard(std::unique_ptr<tcp_socket> &__sock)
+            : sock(__sock) {
     }
-  }
 
-  if (!is_closed())
-  {
-    /* detect & caution undefined behaviour */
-    if (io_loop_ended) {
-      LOG_ERROR("undefined behaviour calling ~tcp_socket for unclosed socket when IO loop closed");
+    tcp_socket_guard::~tcp_socket_guard() {
+        /* If the tcp_socket object still exists (and so it headed for deletion), is
+         * not closed, and current thread is the IO thread, then takeaway ownerhip
+         * from the reference-target and request close & deletion via the IO
+         * thread. This has to be done because it is not safe to delete an un-closed
+         * tcp_socket via the IO thread. */
+        if (sock && !sock->is_closed() &&
+            sock->get_kernel()->get_io()->this_thread_is_io()) {
+            tcp_socket *ptr = sock.release();
+            ptr->close([ptr]() { delete ptr; });
+        }
     }
-    else if (m_kernel->get_io() == nullptr) {
-      LOG_ERROR("undefined behaviour calling ~tcp_socket for unclosed socket when IO loop deleted");
+
+    const char *tcp_socket::to_string(socket_state s) {
+        switch (s) {
+            case socket_state::uninitialised :
+                return "uninitialised";
+            case socket_state::connecting :
+                return "connecting";
+            case socket_state::connected:
+                return "connected";
+            case socket_state::connect_failed:
+                return "connect_failed";
+            case socket_state::listening:
+                return "listening";
+            case socket_state::closing:
+                return "closing";
+            case socket_state::closed:
+                return "closed";
+        }
+        return "unknown";
     }
-    else if (m_kernel->get_io()->this_thread_is_io()) {
-      LOG_ERROR("undefined behaviour calling ~tcp_socket for unclosed socket on IO thread");
+
+    struct write_req {
+        // C style polymorphism. The uv_write_t must be first member.
+        uv_write_t req;
+        uv_buf_t *bufs;
+        size_t nbufs;
+        size_t total_bytes;
+
+        write_req(size_t n, size_t total)
+                : bufs(new uv_buf_t[n]), nbufs(n), total_bytes(total) {}
+
+        ~write_req() {
+            for (size_t i = 0; i < nbufs; i++)
+                delete[] bufs[i].base;
+            delete[] bufs;
+        }
+
+        write_req(const write_req &) = delete;
+
+        write_req &operator=(const write_req &) = delete;
+    };
+
+
+    static void iohandle_alloc_buffer(uv_handle_t * /* handle */,
+                                      size_t suggested_size, uv_buf_t *buf) {
+        // improve memory efficiency
+        *buf = uv_buf_init((char *) new char[suggested_size], suggested_size);
     }
-    else
-      m_io_closed_future.wait();
-  }
-
-  if (m_uv_tcp) {
-    delete (handle_data*)m_uv_tcp->data;;
-    delete m_uv_tcp;
-  }
-
-  {
-    std::lock_guard<std::mutex> guard(m_pending_write_lock);
-    for (auto& i : m_pending_write)
-      delete[] i.base;
-  }
-}
 
 
-bool tcp_socket::is_listening() const
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  return m_state == socket_state::listening;
-}
+    tcp_socket::options::options()
+            : tcp_no_delay_enable(default_tcp_no_delay_enable),
+              keep_alive_enable(default_keep_alive_enable),
+              keep_alive_delay(default_keep_alive_delay) {
+    }
 
 
-bool tcp_socket::is_connected() const
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  return m_state == socket_state::connected;
-}
+    tcp_socket::tcp_socket(kernel *k, uv_tcp_t *h, socket_state ss,
+                           options opts)
+            : m_kernel(k),
+              __logger(k->get_logger()),
+              m_sockopts(opts),
+              m_state(ss),
+              m_uv_tcp(h),
+              m_io_closed_promise(new std::promise<void>),
+              m_io_closed_future(m_io_closed_promise->get_future()),
+              m_bytes_pending_write(0),
+              m_bytes_written(0),
+              m_bytes_read(0),
+              m_self(this, [](tcp_socket *) {/* null deleter */}) {
+        if (m_uv_tcp) {
+            assert(m_uv_tcp->data == nullptr);
+            m_uv_tcp->data = new handle_data(this);
+
+            // established-socket is ready, so apply options
+            apply_socket_options(false);
+        }
+    }
 
 
-bool tcp_socket::is_connect_failed() const
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  return m_state == socket_state::connect_failed;
-}
+    tcp_socket::tcp_socket(kernel *k, options opts)
+            : tcp_socket(k, nullptr, socket_state::uninitialised, opts) {
+    }
 
 
-bool tcp_socket::is_closing() const
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  return m_state == socket_state::closing;
-}
+    tcp_socket::~tcp_socket() {
+        bool io_loop_ended = false;
+
+        {
+            /* Optionally initiate close */
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            if ((m_state != socket_state::closing) &&
+                (m_state != socket_state::closed)) {
+
+                m_state = socket_state::closing;
+
+                try {
+                    m_kernel->get_io()->push_fn([this]() { this->begin_close(); });
+                } catch (io_loop_closed &) {
+                    io_loop_ended = true;
+                }
+            }
+        }
+
+        if (!is_closed()) {
+            /* detect & caution undefined behaviour */
+            if (io_loop_ended) {
+                LOG_ERROR("undefined behaviour calling ~tcp_socket for unclosed socket when IO loop closed");
+            } else if (m_kernel->get_io() == nullptr) {
+                LOG_ERROR("undefined behaviour calling ~tcp_socket for unclosed socket when IO loop deleted");
+            } else if (m_kernel->get_io()->this_thread_is_io()) {
+                LOG_ERROR("undefined behaviour calling ~tcp_socket for unclosed socket on IO thread");
+            } else
+                m_io_closed_future.wait();
+        }
+
+        if (m_uv_tcp) {
+            delete (handle_data *) m_uv_tcp->data;;
+            delete m_uv_tcp;
+        }
+
+        {
+            std::lock_guard<std::mutex> guard(m_pending_write_lock);
+            for (auto &i : m_pending_write)
+                delete[] i.base;
+        }
+    }
 
 
-bool tcp_socket::is_closed() const
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  return m_state == socket_state::closed;
-}
+    bool tcp_socket::is_listening() const {
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        return m_state == socket_state::listening;
+    }
 
 
-std::future<uverr> tcp_socket::connect(std::string addr, int port)
-{
-  return connect(addr, std::to_string(port), addr_family::inet4, true);
-}
+    bool tcp_socket::is_connected() const {
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        return m_state == socket_state::connected;
+    }
 
 
-void tcp_socket::begin_close(bool no_linger)
-{
-  /* IO thread */
+    bool tcp_socket::is_connect_failed() const {
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        return m_state == socket_state::connect_failed;
+    }
 
-  // this method should only ever be called once by the IO thread, either
-  // triggered by pushing a close request or a call from uv_walk.
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    m_state = socket_state::closing;
-  }
 
-  // decouple from IO request that might still be pending on the IO thread
-  m_self.reset();
+    bool tcp_socket::is_closing() const {
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        return m_state == socket_state::closing;
+    }
 
-  if (m_uv_tcp) {
+
+    bool tcp_socket::is_closed() const {
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        return m_state == socket_state::closed;
+    }
+
+
+    std::future<uverr> tcp_socket::connect(std::string addr, int port) {
+        return connect(addr, std::to_string(port), addr_family::inet4, true);
+    }
+
+
+    void tcp_socket::begin_close(bool no_linger) {
+        /* IO thread */
+
+        // this method should only ever be called once by the IO thread, either
+        // triggered by pushing a close request or a call from uv_walk.
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            m_state = socket_state::closing;
+        }
+
+        // decouple from IO request that might still be pending on the IO thread
+        m_self.reset();
+
+        if (m_uv_tcp) {
 
 #ifndef _WIN32
-    uv_os_fd_t fd;
-    if (no_linger && (uv_fileno((uv_handle_t*)m_uv_tcp, &fd) == 0)) {
-      struct linger so_linger;
-      so_linger.l_onoff = 1;
-      so_linger.l_linger = 0;
-      setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
-    }
+            uv_os_fd_t fd;
+            if (no_linger && (uv_fileno((uv_handle_t *) m_uv_tcp, &fd) == 0)) {
+                struct linger so_linger;
+                so_linger.l_onoff = 1;
+                so_linger.l_linger = 0;
+                setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+            }
 #else
-    SOCKET sock = m_uv_tcp->socket;
-    if (no_linger && sock != INVALID_SOCKET) {
-      struct linger so_linger;
-      so_linger.l_onoff = 1;
-      so_linger.l_linger = 0;
-      setsockopt(sock, SOL_SOCKET, SO_LINGER, (const char*) &so_linger, sizeof so_linger);
-    }
+            SOCKET sock = m_uv_tcp->socket;
+            if (no_linger && sock != INVALID_SOCKET) {
+              struct linger so_linger;
+              so_linger.l_onoff = 1;
+              so_linger.l_linger = 0;
+              setsockopt(sock, SOL_SOCKET, SO_LINGER, (const char*) &so_linger, sizeof so_linger);
+            }
 #endif
 
-    uv_close((uv_handle_t*)m_uv_tcp, [](uv_handle_t* h) {
-      /* IO thread, invoked upon uv_close completion */
-      handle_data* ptr = (handle_data*)h->data;
-      ptr->tcp_socket_ptr()->close_impl();
-    });
-  } else
-    close_impl();
-}
-
-
-void tcp_socket::close_impl()
-{
-  decltype(m_user_close_fn) user_close_fn;
-  decltype(m_io_closed_promise) closed_promise;
-
-  /* Once the state is set to closed, this tcp_socket object may be immediately
-   * deleted by another thread. So this must be the last action that makes use
-   * of the tcp_socket members. */
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    m_state = socket_state::closed;
-
-    /* Extract from the tcp_socket the child objects that need to have their
-     * lifetime extended beyond that of the parent tcp_socket, so that after
-     * setting of socket state to e_closed, these objects can still be
-     * used. It is also important that the user-close-fn is copied inside
-     * this critical section, and not before the lock is taken.*/
-    user_close_fn = std::move(m_user_close_fn);
-    closed_promise = std::move(m_io_closed_promise);
-  }
-
-  /* Run the user callback first, and then set the promise (the promise is set
-   * as the last action, so that an owner of tcp_socket can wait on a future to
-   * know when all callbacks are complete). This user callback must not perform
-   * a wait on the future, because that only gets set after the callback
-   * returns. */
-  if (user_close_fn)
-    try {
-      user_close_fn();
-    } catch (...) {
+            uv_close((uv_handle_t *) m_uv_tcp, [](uv_handle_t *h) {
+                /* IO thread, invoked upon uv_close completion */
+                handle_data *ptr = (handle_data *) h->data;
+                ptr->tcp_socket_ptr()->close_impl();
+            });
+        } else
+            close_impl();
     }
-  closed_promise->set_value();
-}
 
 
-std::pair<bool, std::string> tcp_socket::fd_info() const
-{
-  uv_os_fd_t fd;
-  if (uv_fileno((uv_handle_t*)m_uv_tcp, &fd) == 0) {
-    std::ostringstream oss;
-    oss << fd;
-    return {true, oss.str()};
-  }
-  else {
-    return {false, ""};
-  }
-}
+    void tcp_socket::close_impl() {
+        decltype(m_user_close_fn) user_close_fn;
+        decltype(m_io_closed_promise) closed_promise;
+
+        /* Once the state is set to closed, this tcp_socket object may be immediately
+         * deleted by another thread. So this must be the last action that makes use
+         * of the tcp_socket members. */
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            m_state = socket_state::closed;
+
+            /* Extract from the tcp_socket the child objects that need to have their
+             * lifetime extended beyond that of the parent tcp_socket, so that after
+             * setting of socket state to e_closed, these objects can still be
+             * used. It is also important that the user-close-fn is copied inside
+             * this critical section, and not before the lock is taken.*/
+            user_close_fn = std::move(m_user_close_fn);
+            closed_promise = std::move(m_io_closed_promise);
+        }
+
+        /* Run the user callback first, and then set the promise (the promise is set
+         * as the last action, so that an owner of tcp_socket can wait on a future to
+         * know when all callbacks are complete). This user callback must not perform
+         * a wait on the future, because that only gets set after the callback
+         * returns. */
+        if (user_close_fn)
+            try {
+                user_close_fn();
+            } catch (...) {
+            }
+        closed_promise->set_value();
+    }
+
+
+    std::pair<bool, std::string> tcp_socket::fd_info() const {
+        uv_os_fd_t fd;
+        if (uv_fileno((uv_handle_t *) m_uv_tcp, &fd) == 0) {
+            std::ostringstream oss;
+            oss << fd;
+            return {true, oss.str()};
+        } else {
+            return {false, ""};
+        }
+    }
 
 
 /** User request to close socket */
-std::shared_future<void> tcp_socket::close()
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
+    std::shared_future<void> tcp_socket::close() {
+        std::lock_guard<std::mutex> guard(m_state_lock);
 
-  if (m_state != socket_state::closing && m_state != socket_state::closed) {
-    m_state = socket_state::closing;
-    m_kernel->get_io()->push_fn([this]() { this->begin_close(); }); // can throw
-  }
+        if (m_state != socket_state::closing && m_state != socket_state::closed) {
+            m_state = socket_state::closing;
+            m_kernel->get_io()->push_fn([this]() { this->begin_close(); }); // can throw
+        }
 
-  return m_io_closed_future;
-}
+        return m_io_closed_future;
+    }
 
 
 /** User request to reset & close a socket */
-std::shared_future<void> tcp_socket::reset()
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
+    std::shared_future<void> tcp_socket::reset() {
+        std::lock_guard<std::mutex> guard(m_state_lock);
 
-  if (m_state != socket_state::closing && m_state != socket_state::closed) {
-    m_state = socket_state::closing;
-    m_kernel->get_io()->push_fn(
-        [this]() { this->begin_close(true); }); // can throw
-  }
+        if (m_state != socket_state::closing && m_state != socket_state::closed) {
+            m_state = socket_state::closing;
+            m_kernel->get_io()->push_fn(
+                    [this]() { this->begin_close(true); }); // can throw
+        }
 
-  return m_io_closed_future;
-}
-
-
-bool tcp_socket::close(on_close_cb user_on_close_fn)
-{
-  /* Note that it is safe for this to be called when state is e_closing.  In
-   * such a situation the on-close callback is due to be invoked very soon (on
-   * the IO thread), but because we hold the lock here, the callback function
-   * can be altered before it gets invoked (see the uv_close callback).
-   */
-
-  std::lock_guard<std::mutex> guard(m_state_lock);
-
-  // if tcp_socket is already closed, it will not be possible to later invoke
-  // the user provided on-close callback, so return false
-  if (m_state == socket_state::closed)
-    return false;
-
-  m_user_close_fn = user_on_close_fn;
-
-  if (m_state != socket_state::closing) {
-    m_state = socket_state::closing;
-    m_kernel->get_io()->push_fn([this]() { this->begin_close(); }); // can throw
-  }
-
-  return true;
-}
+        return m_io_closed_future;
+    }
 
 
-std::future<uverr> tcp_socket::start_read(io_on_read on_read,
-                                          io_on_error on_error)
-{
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    if (m_state != socket_state::connected)
-      throw tcp_socket::error("tcp_socket::start_read() when not connected");
-  }
+    bool tcp_socket::close(on_close_cb user_on_close_fn) {
+        /* Note that it is safe for this to be called when state is e_closing.  In
+         * such a situation the on-close callback is due to be invoked very soon (on
+         * the IO thread), but because we hold the lock here, the callback function
+         * can be altered before it gets invoked (see the uv_close callback).
+         */
 
-  auto completion_promise = std::make_shared<std::promise<uverr>>();
+        std::lock_guard<std::mutex> guard(m_state_lock);
 
-  auto fn = [this, completion_promise]() {
-    uverr ec =
-        uv_read_start((uv_stream_t*)this->m_uv_tcp, iohandle_alloc_buffer,
-                      [](uv_stream_t* uvh, ssize_t nread, const uv_buf_t* buf) {
-          handle_data* ptr = (handle_data*)uvh->data;
-          ptr->tcp_socket_ptr()->on_read_cb(nread, buf);
-        });
-    completion_promise->set_value(ec);
-  };
+        // if tcp_socket is already closed, it will not be possible to later invoke
+        // the user provided on-close callback, so return false
+        if (m_state == socket_state::closed)
+            return false;
 
-  m_io_on_read = std::move(on_read);
-  m_io_on_error = std::move(on_error);
+        m_user_close_fn = user_on_close_fn;
 
-  m_kernel->get_io()->push_fn(std::move(fn));
+        if (m_state != socket_state::closing) {
+            m_state = socket_state::closing;
+            m_kernel->get_io()->push_fn([this]() { this->begin_close(); }); // can throw
+        }
 
-  return completion_promise->get_future();
-}
+        return true;
+    }
 
 
-void tcp_socket::reset_listener()
-{
-  m_io_on_read = nullptr;
-  m_io_on_error = nullptr;
-}
+    std::future<uverr> tcp_socket::start_read(io_on_read on_read,
+                                              io_on_error on_error) {
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            if (m_state != socket_state::connected)
+                throw tcp_socket::error("tcp_socket::start_read() when not connected");
+        }
+
+        auto completion_promise = std::make_shared<std::promise<uverr>>();
+
+        auto fn = [this, completion_promise]() {
+            uverr ec =
+                    uv_read_start((uv_stream_t *) this->m_uv_tcp, iohandle_alloc_buffer,
+                                  [](uv_stream_t *uvh, ssize_t nread, const uv_buf_t *buf) {
+                                      handle_data *ptr = (handle_data *) uvh->data;
+                                      ptr->tcp_socket_ptr()->on_read_cb(nread, buf);
+                                  });
+            completion_promise->set_value(ec);
+        };
+
+        m_io_on_read = std::move(on_read);
+        m_io_on_error = std::move(on_error);
+
+        m_kernel->get_io()->push_fn(std::move(fn));
+
+        return completion_promise->get_future();
+    }
+
+
+    void tcp_socket::reset_listener() {
+        m_io_on_read = nullptr;
+        m_io_on_error = nullptr;
+    }
 
 
 /* Push a close event, but unlike the user facing function 'close', does not
  * throw an exception if already has been requested to close.
  */
-void tcp_socket::close_once_on_io()
-{
-  /* IO thread */
+    void tcp_socket::close_once_on_io() {
+        /* IO thread */
 
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  if (m_state != socket_state::closing && m_state != socket_state::closed) {
-    m_state = socket_state::closing;
-    m_kernel->get_io()->push_fn([this]() { this->begin_close(); });
-  }
-}
-
-void tcp_socket::handle_read_bytes(ssize_t nread, const uv_buf_t* buf)
-{
-  LOG_TRACE("fd: " << fd_info().second << ", tcp_rx: len " << nread
-            << (nread>0? ", hex ":"")
-            << (nread>0? to_hex(buf->base,nread):""));
-
-  if (nread >= 0 && m_io_on_read)
-    m_io_on_read(buf->base, nread);
-  else if (nread < 0 && m_io_on_error)
-    m_io_on_error(uverr(nread));
-}
-
-void tcp_socket::on_read_cb(ssize_t nread, const uv_buf_t* buf)
-{
-  /* IO thread */
-  if (nread > 0)
-    m_bytes_read += nread;
-
-  try {
-    handle_read_bytes(nread, buf);
-  }
-  catch (...) {
-    log_exception(__logger, "IO thread in on_read_cb");
-  }
-
-  delete[] buf -> base;
-}
-
-
-void tcp_socket::write(const char* src, size_t len)
-{
-  uv_buf_t buf;
-
-  scope_guard buf_guard([&buf]() {
-      delete[] buf.base;
-    });
-
-  buf = uv_buf_init(new char[len], len);
-  memcpy(buf.base, src, len);
-
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    if (m_state == socket_state::closing || m_state == socket_state::closed)
-      throw tcp_socket::error("tcp_socket::write() when closing or closed");
-
-    {
-      std::lock_guard<std::mutex> guard(m_pending_write_lock);
-      m_pending_write.push_back(buf);
-      buf_guard.dismiss();
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        if (m_state != socket_state::closing && m_state != socket_state::closed) {
+            m_state = socket_state::closing;
+            m_kernel->get_io()->push_fn([this]() { this->begin_close(); });
+        }
     }
 
-    m_kernel->get_io()->push_fn([this]() { service_pending_write(); });
-  }
-}
+    void tcp_socket::handle_read_bytes(ssize_t nread, const uv_buf_t *buf) {
+        LOG_TRACE("fd: " << fd_info().second << ", tcp_rx: len " << nread
+                         << (nread > 0 ? ", hex " : "")
+                         << (nread > 0 ? to_hex(buf->base, nread) : ""));
 
-
-void tcp_socket::write(std::pair<const char*, size_t>* srcbuf, size_t count)
-{
-  // improve memory usage here
-  std::vector<uv_buf_t> bufs;
-
-  scope_guard buf_guard([&bufs]() {
-    for (auto& i : bufs)
-      delete[] i.base;
-  });
-
-  bufs.reserve(count);
-  for (size_t i = 0; i < count; i++) {
-    uv_buf_t buf = uv_buf_init(new char[srcbuf->second], srcbuf->second);
-    memcpy(buf.base, srcbuf->first, srcbuf->second);
-    srcbuf++;
-    bufs.push_back(buf);
-  }
-
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    if (m_state == socket_state::closing || m_state == socket_state::closed)
-      throw tcp_socket::error("tcp_socket::write() when closing or closed");
-
-    {
-      std::lock_guard<std::mutex> guard(m_pending_write_lock);
-      m_pending_write.insert(m_pending_write.end(), bufs.begin(), bufs.end());
-      bufs.clear();
-      buf_guard.dismiss();
+        if (nread >= 0 && m_io_on_read)
+            m_io_on_read(buf->base, nread);
+        else if (nread < 0 && m_io_on_error)
+            m_io_on_error(uverr(nread));
     }
 
-    m_kernel->get_io()->push_fn([this]() {service_pending_write();});
-  }
-}
+    void tcp_socket::on_read_cb(ssize_t nread, const uv_buf_t *buf) {
+        /* IO thread */
+        if (nread > 0)
+            m_bytes_read += nread;
 
+        try {
+            handle_read_bytes(nread, buf);
+        }
+        catch (...) {
+            log_exception(__logger, "IO thread in on_read_cb");
+        }
 
-void tcp_socket::do_write(std::vector<uv_buf_t>& bufs)
-{
-  /* IO thread */
-  assert(m_kernel->get_io()->this_thread_is_io() == true);
-
-  size_t bytes_to_send = 0;
-  for (size_t i = 0; i < bufs.size(); i++)
-    bytes_to_send += bufs[i].len;
-
-  const size_t pend_max = m_kernel->get_config().socket_max_pending_write_bytes;
-
-  if (is_connected() && !bufs.empty()) {
-    if (bytes_to_send > (pend_max - m_bytes_pending_write)) {
-      LOG_WARN("pending bytes limit reached; closing connection");
-      close_once_on_io();
-      return;
+        delete[] buf->base;
     }
 
-    // build the request
-    write_req* wr = new write_req(bufs.size(), bytes_to_send);
-    wr->req.data = this;
-    for (size_t i = 0; i < bufs.size(); i++)
-      wr->bufs[i] = bufs[i];
 
-    m_bytes_pending_write += bytes_to_send;
+    void tcp_socket::write(const char *src, size_t len) {
+        uv_buf_t buf;
 
-    int r = uv_write((uv_write_t*)wr, (uv_stream_t*)m_uv_tcp, wr->bufs,
-                     wr->nbufs, [](uv_write_t* req, int status) {
-      tcp_socket* the_tcp_socket = (tcp_socket*)req->data;
-      the_tcp_socket->on_write_cb(req, status);
-    });
+        scope_guard buf_guard([&buf]() {
+            delete[] buf.base;
+        });
 
-    if (r) {
-      LOG_WARN("uv_write failed, errno " << std::abs(r) << " ("
-                                         << uv_strerror(r)
-                                         << "); closing connection");
-      delete wr;
-      close_once_on_io();
-      return;
-    };
-  }
-}
+        buf = uv_buf_init(new char[len], len);
+        memcpy(buf.base, src, len);
 
-void tcp_socket::do_write()
-{
-  /* IO thread */
-  assert(m_kernel->get_io()->this_thread_is_io() == true);
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            if (m_state == socket_state::closing || m_state == socket_state::closed)
+                throw tcp_socket::error("tcp_socket::write() when closing or closed");
 
-  std::vector<uv_buf_t> copy;
-  {
-    std::lock_guard<std::mutex> guard(m_pending_write_lock);
-    m_pending_write.swap(copy);
-  }
+            {
+                std::lock_guard<std::mutex> guard(m_pending_write_lock);
+                m_pending_write.push_back(buf);
+                buf_guard.dismiss();
+            }
 
-  scope_guard buf_guard([&copy]() {
-    for (auto& i : copy)
-      delete[] i.base;
-  });
-
-  size_t bytes_to_send = 0;
-  for (size_t i = 0; i < copy.size(); i++)
-    bytes_to_send += copy[i].len;
-
-  if (LOG_FOR_LEVEL(logger::eTrace)) {
-    for (size_t i = 0; i < copy.size(); i++)
-      LOG_TRACE("fd: " << fd_info().second << ", tcp_tx: len " << copy[i].len
-            << (copy[i].len>0? ", hex ":"")
-            << (copy[i].len>0? to_hex(copy[i].base,copy[i].len):""));
-  }
-
-  const size_t pend_max = m_kernel->get_config().socket_max_pending_write_bytes;
-
-  if (is_connected() && !copy.empty()) {
-    if (bytes_to_send > (pend_max - m_bytes_pending_write)) {
-      LOG_WARN("pending bytes limit reached; closing connection");
-      close_once_on_io();
-      return;
+            m_kernel->get_io()->push_fn([this]() { service_pending_write(); });
+        }
     }
 
-    // build the request
-    write_req* wr = new write_req(copy.size(), bytes_to_send);
-    wr->req.data = this;
-    for (size_t i = 0; i < copy.size(); i++)
-      wr->bufs[i] = copy[i];
 
-    m_bytes_pending_write += bytes_to_send;
+    void tcp_socket::write(std::pair<const char *, size_t> *srcbuf, size_t count) {
+        // improve memory usage here
+        std::vector<uv_buf_t> bufs;
 
-    int r = uv_write((uv_write_t*)wr, (uv_stream_t*)m_uv_tcp, wr->bufs,
-                     wr->nbufs, [](uv_write_t* req, int status) {
-      tcp_socket* the_tcp_socket = (tcp_socket*)req->data;
-      the_tcp_socket->on_write_cb(req, status);
-    });
+        scope_guard buf_guard([&bufs]() {
+            for (auto &i : bufs)
+                delete[] i.base;
+        });
 
-    if (r == 0)
-      buf_guard.dismiss(); /* bufs will be deleted in uv callback */
-    else {
-      LOG_WARN("uv_write failed, errno " << std::abs(r) << " ("
-                                         << uv_strerror(r)
-                                         << "); closing connection");
-      delete wr;
-      close_once_on_io();
-      return;
+        bufs.reserve(count);
+        for (size_t i = 0; i < count; i++) {
+            uv_buf_t buf = uv_buf_init(new char[srcbuf->second], srcbuf->second);
+            memcpy(buf.base, srcbuf->first, srcbuf->second);
+            srcbuf++;
+            bufs.push_back(buf);
+        }
+
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            if (m_state == socket_state::closing || m_state == socket_state::closed)
+                throw tcp_socket::error("tcp_socket::write() when closing or closed");
+
+            {
+                std::lock_guard<std::mutex> guard(m_pending_write_lock);
+                m_pending_write.insert(m_pending_write.end(), bufs.begin(), bufs.end());
+                bufs.clear();
+                buf_guard.dismiss();
+            }
+
+            m_kernel->get_io()->push_fn([this]() { service_pending_write(); });
+        }
     }
-  }
-}
 
 
-void tcp_socket::on_write_cb(uv_write_t* req, int status)
-{
-  /* IO thread */
+    void tcp_socket::do_write(std::vector<uv_buf_t> &bufs) {
+        /* IO thread */
+        assert(m_kernel->get_io()->this_thread_is_io() == true);
 
-  std::unique_ptr<write_req> wr((write_req*)req); // ensure deletion
+        size_t bytes_to_send = 0;
+        for (size_t i = 0; i < bufs.size(); i++)
+            bytes_to_send += bufs[i].len;
 
-  try {
-    if (status == 0) {
-      size_t total =  wr->total_bytes;
-      /*
-      for (size_t i = 0; i < req->nbufs; i++)
-        total += req->bufsml[i].len;
-      */
-      m_bytes_written += total;
-      if (m_bytes_pending_write > total)
-        m_bytes_pending_write -= total;
-      else
-        m_bytes_pending_write = 0;
-    } else {
-      /* write failed - this can happen if we actively terminated the socket
-         while there were still a long queue of bytes awaiting output (eg inthe
-         case of a slow consumer) */
-      close_once_on_io();
+        const size_t pend_max = m_kernel->get_config().socket_max_pending_write_bytes;
+
+        if (is_connected() && !bufs.empty()) {
+            if (bytes_to_send > (pend_max - m_bytes_pending_write)) {
+                LOG_WARN("pending bytes limit reached; closing connection");
+                close_once_on_io();
+                return;
+            }
+
+            // build the request
+            write_req *wr = new write_req(bufs.size(), bytes_to_send);
+            wr->req.data = this;
+            for (size_t i = 0; i < bufs.size(); i++)
+                wr->bufs[i] = bufs[i];
+
+            m_bytes_pending_write += bytes_to_send;
+
+            int r = uv_write((uv_write_t *) wr, (uv_stream_t *) m_uv_tcp, wr->bufs,
+                             wr->nbufs, [](uv_write_t *req, int status) {
+                        tcp_socket *the_tcp_socket = (tcp_socket *) req->data;
+                        the_tcp_socket->on_write_cb(req, status);
+                    });
+
+            if (r) {
+                LOG_WARN("uv_write failed, errno " << std::abs(r) << " ("
+                                                   << uv_strerror(r)
+                                                   << "); closing connection");
+                delete wr;
+                close_once_on_io();
+                return;
+            };
+        }
     }
-  } catch (...) {
-    log_exception(__logger, "IO thread in on_write_cb");
-  }
-}
+
+    void tcp_socket::do_write() {
+        /* IO thread */
+        assert(m_kernel->get_io()->this_thread_is_io() == true);
+
+        std::vector<uv_buf_t> copy;
+        {
+            std::lock_guard<std::mutex> guard(m_pending_write_lock);
+            m_pending_write.swap(copy);
+        }
+
+        scope_guard buf_guard([&copy]() {
+            for (auto &i : copy)
+                delete[] i.base;
+        });
+
+        size_t bytes_to_send = 0;
+        for (size_t i = 0; i < copy.size(); i++)
+            bytes_to_send += copy[i].len;
+
+        if (LOG_FOR_LEVEL(logger::eTrace)) {
+            for (size_t i = 0; i < copy.size(); i++)
+                LOG_TRACE("fd: " << fd_info().second << ", tcp_tx: len " << copy[i].len
+                                 << (copy[i].len > 0 ? ", hex " : "")
+                                 << (copy[i].len > 0 ? to_hex(copy[i].base, copy[i].len) : ""));
+        }
+
+        const size_t pend_max = m_kernel->get_config().socket_max_pending_write_bytes;
+
+        if (is_connected() && !copy.empty()) {
+            if (bytes_to_send > (pend_max - m_bytes_pending_write)) {
+                LOG_WARN("pending bytes limit reached; closing connection");
+                close_once_on_io();
+                return;
+            }
+
+            // build the request
+            write_req *wr = new write_req(copy.size(), bytes_to_send);
+            wr->req.data = this;
+            for (size_t i = 0; i < copy.size(); i++)
+                wr->bufs[i] = copy[i];
+
+            m_bytes_pending_write += bytes_to_send;
+
+            int r = uv_write((uv_write_t *) wr, (uv_stream_t *) m_uv_tcp, wr->bufs,
+                             wr->nbufs, [](uv_write_t *req, int status) {
+                        tcp_socket *the_tcp_socket = (tcp_socket *) req->data;
+                        the_tcp_socket->on_write_cb(req, status);
+                    });
+
+            if (r == 0)
+                buf_guard.dismiss(); /* bufs will be deleted in uv callback */
+            else {
+                LOG_WARN("uv_write failed, errno " << std::abs(r) << " ("
+                                                   << uv_strerror(r)
+                                                   << "); closing connection");
+                delete wr;
+                close_once_on_io();
+                return;
+            }
+        }
+    }
+
+
+    void tcp_socket::on_write_cb(uv_write_t *req, int status) {
+        /* IO thread */
+
+        std::unique_ptr<write_req> wr((write_req *) req); // ensure deletion
+
+        try {
+            if (status == 0) {
+                size_t total = wr->total_bytes;
+                /*
+                for (size_t i = 0; i < req->nbufs; i++)
+                  total += req->bufsml[i].len;
+                */
+                m_bytes_written += total;
+                if (m_bytes_pending_write > total)
+                    m_bytes_pending_write -= total;
+                else
+                    m_bytes_pending_write = 0;
+            } else {
+                /* write failed - this can happen if we actively terminated the socket
+                   while there were still a long queue of bytes awaiting output (eg inthe
+                   case of a slow consumer) */
+                close_once_on_io();
+            }
+        } catch (...) {
+            log_exception(__logger, "IO thread in on_write_cb");
+        }
+    }
 
 
 /**
  * Called on the IO thread when a new socket is available to be accepted.
  */
-void tcp_socket::on_listen_cb(int status)
-{
-  /* IO thread */
-  uverr ec{status};
+    void tcp_socket::on_listen_cb(int status) {
+        /* IO thread */
+        uverr ec{status};
 
-  if (ec) {
-    m_accept_fn(ec, nullptr);
-    return;
-  }
+        if (ec) {
+            m_accept_fn(ec, nullptr);
+            return;
+        }
 
-  uv_tcp_t* client = new uv_tcp_t();
-  assert(client->data == 0);
-  uv_tcp_init(m_kernel->get_io()->uv_loop(), client);
+        uv_tcp_t *client = new uv_tcp_t();
+        assert(client->data == 0);
+        uv_tcp_init(m_kernel->get_io()->uv_loop(), client);
 
-  ec = uv_accept((uv_stream_t*)m_uv_tcp, (uv_stream_t*)client);
-  if (ec == 0) {
-    auto new_sock = m_accept_fn(0, client);
-    if (new_sock) // user callback did not take ownership of socket
-    {
-      tcp_socket* ptr = new_sock.release();
-      ptr->close([ptr]() { delete ptr; });
-    }
-  } else {
-    uv_close((uv_handle_t*)client, free_socket);
-  }
-}
-
-
-bool tcp_socket::is_initialised() const
-{
-  std::lock_guard<std::mutex> guard(m_state_lock);
-  return m_state != socket_state::uninitialised;
-}
-
-
-std::future<uverr> tcp_socket::listen_impl(const std::string& node,
-                                           const std::string& service,
-                                           addr_family af,
-                                           acceptor_fn_t accept_fn)
-{
-  assert(m_accept_fn == nullptr);
-  m_accept_fn = std::move(accept_fn);
-
-  {
-    std::lock_guard<std::mutex> guard(m_details_lock);
-    m_node = node;
-    m_service = service;
-  }
-
-  auto completion_promise = std::make_shared<std::promise<uverr>>();
-
-  m_kernel->get_io()->push_fn([this, node, service, af, completion_promise]() {
-    this->do_listen(node, service, af, completion_promise);
-  });
-
-  return completion_promise->get_future();
-}
-
-std::future<uverr> tcp_socket::listen(const std::string& node,
-                                      const std::string& service,
-                                      on_accept_cb user_accept_fn,
-                                      addr_family af)
-{
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    if (m_state != socket_state::uninitialised)
-      throw tcp_socket::error("tcp_socket::listen() when already initialised");
-  }
-
-  if (!user_accept_fn)
-    throw tcp_socket::error("on_accept_cb is null");
-
-  auto accept_fn=[this, user_accept_fn](uverr ec,uv_tcp_t* h) {
-
-    /* Invoke the virtual constructor function 'create', so that if this
-     * listen(...) method is called for an instance of a derived class, we will
-     * create a instance of the derived class. */
-    std::unique_ptr<tcp_socket> new_sock(
-      h? create(m_kernel, h, socket_state::connected, m_sockopts):0);
-
-    /* Catch user function exceptions, to prevent stack unwind and destruction
-     * of the open tcp_socket object.  The tcp_socket cannot be closed & deleted
-     * on the IO thread. */
-    try {
-      user_accept_fn(new_sock, ec);
-    }
-    catch (std::exception& e) {
-      LOG_ERROR("exception during socket on_accept_cb : " << e.what());
-    }
-    catch (...) {
-      LOG_ERROR("exception during socket on_accept_cb : unknown");
+        ec = uv_accept((uv_stream_t *) m_uv_tcp, (uv_stream_t *) client);
+        if (ec == 0) {
+            auto new_sock = m_accept_fn(0, client);
+            if (new_sock) // user callback did not take ownership of socket
+            {
+                tcp_socket *ptr = new_sock.release();
+                ptr->close([ptr]() { delete ptr; });
+            }
+        } else {
+            uv_close((uv_handle_t *) client, free_socket);
+        }
     }
 
-    return new_sock;
-  };
 
-  return listen_impl(node, service, af, accept_fn);
-}
+    bool tcp_socket::is_initialised() const {
+        std::lock_guard<std::mutex> guard(m_state_lock);
+        return m_state != socket_state::uninitialised;
+    }
 
 
-void tcp_socket::do_listen(const std::string& node, const std::string& service,
-                           addr_family af,
-                           std::shared_ptr<std::promise<uverr>> completion)
-{
-  /* IO thread */
+    std::future<uverr> tcp_socket::listen_impl(const std::string &node,
+                                               const std::string &service,
+                                               addr_family af,
+                                               acceptor_fn_t accept_fn) {
+        assert(m_accept_fn == nullptr);
+        m_accept_fn = std::move(accept_fn);
+
+        {
+            std::lock_guard<std::mutex> guard(m_details_lock);
+            m_node = node;
+            m_service = service;
+        }
+
+        auto completion_promise = std::make_shared<std::promise<uverr>>();
+
+        m_kernel->get_io()->push_fn([this, node, service, af, completion_promise]() {
+            this->do_listen(node, service, af, completion_promise);
+        });
+
+        return completion_promise->get_future();
+    }
+
+    std::future<uverr> tcp_socket::listen(const std::string &node,
+                                          const std::string &service,
+                                          on_accept_cb user_accept_fn,
+                                          addr_family af) {
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            if (m_state != socket_state::uninitialised)
+                throw tcp_socket::error("tcp_socket::listen() when already initialised");
+        }
+
+        if (!user_accept_fn)
+            throw tcp_socket::error("on_accept_cb is null");
+
+        auto accept_fn = [this, user_accept_fn](uverr ec, uv_tcp_t *h) {
+
+            /* Invoke the virtual constructor function 'create', so that if this
+             * listen(...) method is called for an instance of a derived class, we will
+             * create a instance of the derived class. */
+            std::unique_ptr<tcp_socket> new_sock(
+                    h ? create(m_kernel, h, socket_state::connected, m_sockopts) : 0);
+
+            /* Catch user function exceptions, to prevent stack unwind and destruction
+             * of the open tcp_socket object.  The tcp_socket cannot be closed & deleted
+             * on the IO thread. */
+            try {
+                user_accept_fn(new_sock, ec);
+            }
+            catch (std::exception &e) {
+                LOG_ERROR("exception during socket on_accept_cb : " << e.what());
+            }
+            catch (...) {
+                LOG_ERROR("exception during socket on_accept_cb : unknown");
+            }
+
+            return new_sock;
+        };
+
+        return listen_impl(node, service, af, accept_fn);
+    }
+
+
+    void tcp_socket::do_listen(const std::string &node, const std::string &service,
+                               addr_family af,
+                               std::shared_ptr<std::promise<uverr>> completion) {
+        /* IO thread */
 
 #ifndef NDEBUG
-  assert(m_uv_tcp == nullptr);
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    assert(m_state == socket_state::uninitialised);
-  }
+        assert(m_uv_tcp == nullptr);
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            assert(m_state == socket_state::uninitialised);
+        }
 #endif
 
-  struct addrinfo hints;
-  memset(&hints, 0, sizeof(hints));
+        struct addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
 
-  switch (af) {
-    case addr_family::unspec:
-      hints.ai_family = AF_UNSPEC;
-      break;
-    case addr_family::inet4:
-      hints.ai_family = AF_INET;
-      break;
-    case addr_family::inet6:
-      hints.ai_family = AF_INET6;
-      break;
-  }
+        switch (af) {
+            case addr_family::unspec:
+                hints.ai_family = AF_UNSPEC;
+                break;
+            case addr_family::inet4:
+                hints.ai_family = AF_INET;
+                break;
+            case addr_family::inet6:
+                hints.ai_family = AF_INET6;
+                break;
+        }
 
-  hints.ai_socktype = SOCK_STREAM; /* Connection based socket */
-  hints.ai_flags = AI_PASSIVE;     /* Allow wildcard IP address */
-  hints.ai_protocol = IPPROTO_TCP;
+        hints.ai_socktype = SOCK_STREAM; /* Connection based socket */
+        hints.ai_flags = AI_PASSIVE;     /* Allow wildcard IP address */
+        hints.ai_protocol = IPPROTO_TCP;
 
-  /* getaddrinfo() returns a list of address structures that can be used in
-   * later calls to bind or connect */
-  uv_getaddrinfo_t req;
-  uverr ec = uv_getaddrinfo(
-      m_kernel->get_io()->uv_loop(), &req, nullptr /* no callback */,
-      node.empty() ? nullptr : node.c_str(),
-      service.empty() ? nullptr : service.c_str(), &hints);
+        /* getaddrinfo() returns a list of address structures that can be used in
+         * later calls to bind or connect */
+        uv_getaddrinfo_t req;
+        uverr ec = uv_getaddrinfo(
+                m_kernel->get_io()->uv_loop(), &req, nullptr /* no callback */,
+                node.empty() ? nullptr : node.c_str(),
+                service.empty() ? nullptr : service.c_str(), &hints);
 
-  if (ec) {
-    completion->set_value(ec);
-    return;
-  }
+        if (ec) {
+            completion->set_value(ec);
+            return;
+        }
 
-  /* Try each address until we successfullly bind. On any error we close the
-   * socket and try the next address. */
-  uv_tcp_t* h = nullptr;
-  struct addrinfo* ai = nullptr;
-  for (ai = req.addrinfo; ai != nullptr; ai = ai->ai_next) {
+        /* Try each address until we successfullly bind. On any error we close the
+         * socket and try the next address. */
+        uv_tcp_t *h = nullptr;
+        struct addrinfo *ai = nullptr;
+        for (ai = req.addrinfo; ai != nullptr; ai = ai->ai_next) {
 
-    h = new uv_tcp_t();
-    assert(h->data == 0);
-    if (uv_tcp_init(m_kernel->get_io()->uv_loop(), h) != 0) {
-      delete h;
-      continue;
+            h = new uv_tcp_t();
+            assert(h->data == 0);
+            if (uv_tcp_init(m_kernel->get_io()->uv_loop(), h) != 0) {
+                delete h;
+                continue;
+            }
+
+            if (uv_tcp_bind(h, ai->ai_addr, 0 /* flags */) == 0)
+                break; /* success */
+
+            uv_close((uv_handle_t *) h, free_socket);
+        }
+
+        uv_freeaddrinfo(req.addrinfo);
+
+        if (ai == nullptr) {
+            /* no address worked, report an approporiate error code */
+            completion->set_value(UV_EADDRNOTAVAIL);
+            return;
+        }
+
+        m_uv_tcp = h;
+        m_uv_tcp->data = new handle_data(this);
+
+        ec = uv_listen((uv_stream_t *) h, 128, [](uv_stream_t *server, int status) {
+            handle_data *uvhd_ptr = (handle_data *) server->data;
+            uvhd_ptr->tcp_socket_ptr()->on_listen_cb(status);
+        });
+
+        if (ec) {
+            m_uv_tcp = nullptr;
+            uv_close((uv_handle_t *) h, free_socket);
+        } else {
+            std::lock_guard<std::mutex> guard(m_state_lock);
+            m_state = socket_state::listening;
+
+            // listen-socket is ready, so apply options
+            apply_socket_options(true);
+        }
+
+        completion->set_value(ec);
     }
 
-    if (uv_tcp_bind(h, ai->ai_addr, 0 /* flags */) == 0)
-      break; /* success */
 
-    uv_close((uv_handle_t*)h, free_socket);
-  }
+    std::future<uverr> tcp_socket::connect(const std::string &node,
+                                           const std::string &service,
+                                           addr_family af, bool resolve_addr) {
+        {
+            std::lock_guard<std::mutex> guard(m_state_lock);
 
-  uv_freeaddrinfo(req.addrinfo);
+            if (m_state != socket_state::uninitialised)
+                throw tcp_socket::error("tcp_socket::connect() when already initialised");
 
-  if (ai == nullptr) {
-    /* no address worked, report an approporiate error code */
-    completion->set_value(UV_EADDRNOTAVAIL);
-    return;
-  }
+            m_state = socket_state::connecting;
+        }
 
-  m_uv_tcp = h;
-  m_uv_tcp->data = new handle_data(this);
+        {
+            std::lock_guard<std::mutex> guard(m_details_lock);
+            m_node = node;
+            m_service = service;
+        }
 
-  ec = uv_listen((uv_stream_t*)h, 128, [](uv_stream_t* server, int status) {
-    handle_data* uvhd_ptr = (handle_data*)server->data;
-    uvhd_ptr->tcp_socket_ptr()->on_listen_cb(status);
-  });
+        auto completion_promise = std::make_shared<std::promise<uverr>>();
 
-  if (ec) {
-    m_uv_tcp = nullptr;
-    uv_close((uv_handle_t*)h, free_socket);
-  } else {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-    m_state = socket_state::listening;
+        m_kernel->get_io()->push_fn(
+                [this, node, service, af, resolve_addr, completion_promise]() {
+                    this->do_connect(node, service, af, resolve_addr, completion_promise);
+                });
 
-    // listen-socket is ready, so apply options
-    apply_socket_options(true);
-  }
-
-  completion->set_value(ec);
-}
-
-
-std::future<uverr> tcp_socket::connect(const std::string& node,
-                                       const std::string& service,
-                                       addr_family af, bool resolve_addr)
-{
-  {
-    std::lock_guard<std::mutex> guard(m_state_lock);
-
-    if (m_state != socket_state::uninitialised)
-      throw tcp_socket::error("tcp_socket::connect() when already initialised");
-
-    m_state = socket_state::connecting;
-  }
-
-  {
-    std::lock_guard<std::mutex> guard(m_details_lock);
-    m_node = node;
-    m_service = service;
-  }
-
-  auto completion_promise = std::make_shared<std::promise<uverr>>();
-
-  m_kernel->get_io()->push_fn(
-      [this, node, service, af, resolve_addr, completion_promise]() {
-        this->do_connect(node, service, af, resolve_addr, completion_promise);
-      });
-
-  return completion_promise->get_future();
-}
-
-
-struct connect_context
-{
-  uv_connect_t request; // must be first, allow for casts
-  std::shared_ptr<std::promise<uverr>> completion;
-  std::weak_ptr<tcp_socket> wp;
-
-  connect_context(std::shared_ptr<std::promise<uverr>> p,
-                  std::weak_ptr<tcp_socket> sock)
-    : completion(p), wp(std::move(sock)) { }
-
-};
-
-
-void tcp_socket::do_connect(const std::string& node, const std::string& service,
-                            addr_family af, bool resolve_addr,
-                            std::shared_ptr<std::promise<uverr>> completion)
-{
-  /* IO thread */
-
-  assert(m_uv_tcp == nullptr);
-
-  struct addrinfo hints;
-  memset(&hints, 0, sizeof(hints));
-
-  switch (af) {
-    case addr_family::unspec:
-      hints.ai_family = AF_UNSPEC;
-      break;
-    case addr_family::inet4:
-      hints.ai_family = AF_INET;
-      break;
-    case addr_family::inet6:
-      hints.ai_family = AF_INET6;
-      break;
-  }
-
-  hints.ai_socktype = SOCK_STREAM; /* Connection based socket */
-  hints.ai_protocol = IPPROTO_TCP;
-  hints.ai_socktype = resolve_addr ? 0 : (AI_NUMERICHOST | AI_NUMERICSERV);
-
-  /* getaddrinfo() returns a list of address structures that can be used in
-   * later calls to bind or connect */
-  uv_getaddrinfo_t req;
-  uverr ec = uv_getaddrinfo(
-      m_kernel->get_io()->uv_loop(), &req, nullptr /* no callback */,
-      node.empty() ? nullptr : node.c_str(),
-      service.empty() ? nullptr : service.c_str(), &hints);
-
-  if (ec) {
-    completion->set_value(ec);
-    return;
-  }
-
-  /* Try each address until a call to connect is successful. On any error we
-   * close the socket and try the next address. */
-  uv_tcp_t* h = nullptr;
-  struct addrinfo* ai = nullptr;
-  for (ai = req.addrinfo; ai != nullptr; ai = ai->ai_next) {
-
-    h = new uv_tcp_t();
-    assert(h->data == 0);
-    if (uv_tcp_init(m_kernel->get_io()->uv_loop(), h) != 0) {
-      delete h;
-      continue;
+        return completion_promise->get_future();
     }
-    h->data = new handle_data(handle_data::handle_type::tcp_connect);
-
-    auto* ctx = new connect_context(completion, m_self);
-
-    ec = uv_tcp_connect((uv_connect_t*)ctx, h, ai->ai_addr,
-                        [](uv_connect_t* req, int status) {
-      std::unique_ptr<connect_context> ctx((connect_context*)req);
-
-      if (auto sp = ctx->wp.lock())
-      {
-        sp->connect_completed(status, ctx->completion,
-                              (uv_tcp_t*)req->handle);
-      }
-      else
-      {
-        /* We no longer have a reference to the original tcp_socket.  This
-         * happens when the tcp_socket object has been deleted before the
-         * uv_connect callback was called.  We have no use for the current
-         * uv_tcp_t handle, so just delete.  We also check that the handle is
-         * not already closing, which may be the case if the IO loop has been
-         * shutdown.
-         */
-        if (!uv_is_closing((uv_handle_t*) req->handle))
-          uv_close((uv_handle_t*) req->handle, free_socket);
-      }
-    });
-
-    if (ec == 0)
-      break; /* success, connect in progress */
-
-    delete ctx;
-    uv_close((uv_handle_t*)h, free_socket);
-  }
-
-  uv_freeaddrinfo(req.addrinfo);
-
-  if (ai == nullptr) {
-    /* no address worked, use the last error code seen if non-zero */
-    completion->set_value(ec ? ec : UV_EADDRNOTAVAIL);
-    return;
-  }
-
-  /* Note: completion is only set during the connect_completed callback */
-}
 
 
-void tcp_socket::connect_completed(
-  uverr ec,
-  std::shared_ptr<std::promise<uverr>> completion,
-  uv_tcp_t* h)
-{
-  /* IO thread */
+    struct connect_context {
+        uv_connect_t request; // must be first, allow for casts
+        std::shared_ptr<std::promise<uverr>> completion;
+        std::weak_ptr<tcp_socket> wp;
 
-  std::lock_guard<std::mutex> guard(m_state_lock);
+        connect_context(std::shared_ptr<std::promise<uverr>> p,
+                        std::weak_ptr<tcp_socket> sock)
+                : completion(p), wp(std::move(sock)) {}
 
-  /* State might be closed/closing, which can happen if a tcp_socket is deleted
-   * before the a previous connect attempt has completed. */
-  assert(m_uv_tcp == nullptr);
-  assert(m_state == socket_state::connecting
-         || m_state == socket_state::closing );
-
-  if (ec == 0) {
-    m_state = socket_state::connected;
-    m_uv_tcp = h;
-    auto ptr = (handle_data*) m_uv_tcp->data;
-    *ptr = handle_data(this);
-
-    // established-socket is ready, so apply options
-    apply_socket_options(false);
-  } else {
-    m_state = socket_state::connect_failed;
-    uv_close((uv_handle_t*)h, free_socket);
-  }
-
-  completion->set_value(ec);
-}
-
-void tcp_socket::service_pending_write()
-{
-  do_write();
-}
-
-tcp_socket* tcp_socket::create(kernel* k, uv_tcp_t* h, socket_state s,
-                               options opts)
-{
-  return new tcp_socket(k, h, s, opts);
-}
-
-const std::string& tcp_socket::node() const
-{
-  std::lock_guard<std::mutex> guard(m_details_lock);
-  return m_node;
-}
-
-const std::string& tcp_socket::service() const
-{
-  std::lock_guard<std::mutex> guard(m_details_lock);
-  return m_service;
-}
+    };
 
 
-socket_address tcp_socket::get_peer_address()
-{
-  if (!m_uv_tcp)
-    return socket_address();
+    void tcp_socket::do_connect(const std::string &node, const std::string &service,
+                                addr_family af, bool resolve_addr,
+                                std::shared_ptr<std::promise<uverr>> completion) {
+        /* IO thread */
 
-  socket_address sa;
-  int ss_len = sizeof (::sockaddr_storage);
+        assert(m_uv_tcp == nullptr);
 
-  static_assert(std::is_same<socket_address::impl_type::element_type, ::sockaddr_storage>(), "types are not the same");
-  static_assert(std::is_same<decltype(sa.m_impl.get()), ::sockaddr_storage*>(), "types are not the same");
+        struct addrinfo hints;
+        memset(&hints, 0, sizeof(hints));
 
-  uv_tcp_getpeername(m_uv_tcp, (sockaddr*) sa.m_impl.get(), &ss_len);
+        switch (af) {
+            case addr_family::unspec:
+                hints.ai_family = AF_UNSPEC;
+                break;
+            case addr_family::inet4:
+                hints.ai_family = AF_INET;
+                break;
+            case addr_family::inet6:
+                hints.ai_family = AF_INET6;
+                break;
+        }
 
-  return sa;
-}
+        hints.ai_socktype = SOCK_STREAM; /* Connection based socket */
+        hints.ai_protocol = IPPROTO_TCP;
+        hints.ai_socktype = resolve_addr ? 0 : (AI_NUMERICHOST | AI_NUMERICSERV);
+
+        /* getaddrinfo() returns a list of address structures that can be used in
+         * later calls to bind or connect */
+        uv_getaddrinfo_t req;
+        uverr ec = uv_getaddrinfo(
+                m_kernel->get_io()->uv_loop(), &req, nullptr /* no callback */,
+                node.empty() ? nullptr : node.c_str(),
+                service.empty() ? nullptr : service.c_str(), &hints);
+
+        if (ec) {
+            completion->set_value(ec);
+            return;
+        }
+
+        /* Try each address until a call to connect is successful. On any error we
+         * close the socket and try the next address. */
+        uv_tcp_t *h = nullptr;
+        struct addrinfo *ai = nullptr;
+        for (ai = req.addrinfo; ai != nullptr; ai = ai->ai_next) {
+
+            h = new uv_tcp_t();
+            assert(h->data == 0);
+            if (uv_tcp_init(m_kernel->get_io()->uv_loop(), h) != 0) {
+                delete h;
+                continue;
+            }
+            h->data = new handle_data(handle_data::handle_type::tcp_connect);
+
+            auto *ctx = new connect_context(completion, m_self);
+
+            ec = uv_tcp_connect((uv_connect_t *) ctx, h, ai->ai_addr,
+                                [](uv_connect_t *req, int status) {
+                                    std::unique_ptr<connect_context> ctx((connect_context *) req);
+
+                                    if (auto sp = ctx->wp.lock()) {
+                                        sp->connect_completed(status, ctx->completion,
+                                                              (uv_tcp_t *) req->handle);
+                                    } else {
+                                        /* We no longer have a reference to the original tcp_socket.  This
+                                         * happens when the tcp_socket object has been deleted before the
+                                         * uv_connect callback was called.  We have no use for the current
+                                         * uv_tcp_t handle, so just delete.  We also check that the handle is
+                                         * not already closing, which may be the case if the IO loop has been
+                                         * shutdown.
+                                         */
+                                        if (!uv_is_closing((uv_handle_t *) req->handle))
+                                            uv_close((uv_handle_t *) req->handle, free_socket);
+                                    }
+                                });
+
+            if (ec == 0)
+                break; /* success, connect in progress */
+
+            delete ctx;
+            uv_close((uv_handle_t *) h, free_socket);
+        }
+
+        uv_freeaddrinfo(req.addrinfo);
+
+        if (ai == nullptr) {
+            /* no address worked, use the last error code seen if non-zero */
+            completion->set_value(ec ? ec : UV_EADDRNOTAVAIL);
+            return;
+        }
+
+        /* Note: completion is only set during the connect_completed callback */
+    }
 
 
-int tcp_socket::get_peer_port()
-{
-  if (!m_uv_tcp)
-    return 0;
+    void tcp_socket::connect_completed(
+            uverr ec,
+            std::shared_ptr<std::promise<uverr>> completion,
+            uv_tcp_t *h) {
+        /* IO thread */
 
-  ::sockaddr_storage ss;
-  int ss_len = sizeof ss;
+        std::lock_guard<std::mutex> guard(m_state_lock);
 
-  uv_tcp_getpeername(m_uv_tcp, (sockaddr*) &ss, &ss_len);
+        /* State might be closed/closing, which can happen if a tcp_socket is deleted
+         * before the a previous connect attempt has completed. */
+        assert(m_uv_tcp == nullptr);
+        assert(m_state == socket_state::connecting
+               || m_state == socket_state::closing);
 
-  if (ss.ss_family == AF_INET) {
-    ::sockaddr_in * addrin = (::sockaddr_in *) &ss;
-    return ntohs(addrin->sin_port);
-  }
+        if (ec == 0) {
+            m_state = socket_state::connected;
+            m_uv_tcp = h;
+            auto ptr = (handle_data *) m_uv_tcp->data;
+            *ptr = handle_data(this);
 
-  if (ss.ss_family == AF_INET6) {
-    ::sockaddr_in6 * addrin6 = (::sockaddr_in6 *) &ss;
-    return ntohs(addrin6->sin6_port);
-  }
+            // established-socket is ready, so apply options
+            apply_socket_options(false);
+        } else {
+            m_state = socket_state::connect_failed;
+            uv_close((uv_handle_t *) h, free_socket);
+        }
 
-  return 0;
-}
+        completion->set_value(ec);
+    }
 
+    void tcp_socket::service_pending_write() {
+        do_write();
+    }
 
+    tcp_socket *tcp_socket::create(kernel *k, uv_tcp_t *h, socket_state s,
+                                   options opts) {
+        return new tcp_socket(k, h, s, opts);
+    }
 
-socket_address tcp_socket::get_local_address()
-{
-  if (!m_uv_tcp)
-    return socket_address();
+    const std::string &tcp_socket::node() const {
+        std::lock_guard<std::mutex> guard(m_details_lock);
+        return m_node;
+    }
 
-  socket_address sa;
-  int ss_len = sizeof (::sockaddr_storage);
-
-  static_assert(std::is_same<socket_address::impl_type::element_type, ::sockaddr_storage>(), "types are not the same");
-  static_assert(std::is_same<decltype(sa.m_impl.get()), ::sockaddr_storage*>(), "types are not the same");
-
-  uv_tcp_getsockname(m_uv_tcp, (sockaddr*) sa.m_impl.get(), &ss_len);
-
-  return sa;
-}
-
-
-int tcp_socket::get_local_port()
-{
-  if (!m_uv_tcp)
-    return 0;
-
-  ::sockaddr_storage ss;
-  int ss_len = sizeof ss;
-
-  uv_tcp_getsockname(m_uv_tcp, (sockaddr*) &ss, &ss_len);
-
-  if (ss.ss_family == AF_INET) {
-    ::sockaddr_in * addrin = (::sockaddr_in *) &ss;
-    return ntohs(addrin->sin_port);
-  }
-
-  if (ss.ss_family == AF_INET6) {
-    ::sockaddr_in6 * addrin6 = (::sockaddr_in6 *) &ss;
-    return ntohs(addrin6->sin6_port);
-  }
-
-  return 0;
-}
+    const std::string &tcp_socket::service() const {
+        std::lock_guard<std::mutex> guard(m_details_lock);
+        return m_service;
+    }
 
 
-void tcp_socket::apply_socket_options(bool is_listen_socket)
-{
-  uverr ec;
+    socket_address tcp_socket::get_peer_address() {
+        if (!m_uv_tcp)
+            return socket_address();
 
-  /* it likely only makes sense to apply some socket options to established
-   * connections, rather that listen sockets */
-  if (!is_listen_socket) {
-    ec = uv_tcp_nodelay(m_uv_tcp, m_sockopts.tcp_no_delay_enable);
-    if (ec)
-      LOG_WARN("uv_tcp_nodelay failed, " << ec.message());
+        socket_address sa;
+        int ss_len = sizeof(::sockaddr_storage);
 
-    ec = uv_tcp_keepalive(m_uv_tcp,
-                          m_sockopts.keep_alive_enable,
-                          m_sockopts.keep_alive_delay.count());
-    if (ec)
-      LOG_WARN("uv_tcp_keepalive failed, " << ec.message());
-  }
-}
+        static_assert(std::is_same<socket_address::impl_type::element_type, ::sockaddr_storage>(),
+                      "types are not the same");
+        static_assert(std::is_same<decltype(sa.m_impl.get()), ::sockaddr_storage *>(), "types are not the same");
+
+        uv_tcp_getpeername(m_uv_tcp, (sockaddr *) sa.m_impl.get(), &ss_len);
+
+        return sa;
+    }
+
+
+    int tcp_socket::get_peer_port() {
+        if (!m_uv_tcp)
+            return 0;
+
+        ::sockaddr_storage ss;
+        int ss_len = sizeof ss;
+
+        uv_tcp_getpeername(m_uv_tcp, (sockaddr *) &ss, &ss_len);
+
+        if (ss.ss_family == AF_INET) {
+            ::sockaddr_in *addrin = (::sockaddr_in *) &ss;
+            return ntohs(addrin->sin_port);
+        }
+
+        if (ss.ss_family == AF_INET6) {
+            ::sockaddr_in6 *addrin6 = (::sockaddr_in6 *) &ss;
+            return ntohs(addrin6->sin6_port);
+        }
+
+        return 0;
+    }
+
+
+    socket_address tcp_socket::get_local_address() {
+        if (!m_uv_tcp)
+            return socket_address();
+
+        socket_address sa;
+        int ss_len = sizeof(::sockaddr_storage);
+
+        static_assert(std::is_same<socket_address::impl_type::element_type, ::sockaddr_storage>(),
+                      "types are not the same");
+        static_assert(std::is_same<decltype(sa.m_impl.get()), ::sockaddr_storage *>(), "types are not the same");
+
+        uv_tcp_getsockname(m_uv_tcp, (sockaddr *) sa.m_impl.get(), &ss_len);
+
+        return sa;
+    }
+
+
+    int tcp_socket::get_local_port() {
+        if (!m_uv_tcp)
+            return 0;
+
+        ::sockaddr_storage ss;
+        int ss_len = sizeof ss;
+
+        uv_tcp_getsockname(m_uv_tcp, (sockaddr *) &ss, &ss_len);
+
+        if (ss.ss_family == AF_INET) {
+            ::sockaddr_in *addrin = (::sockaddr_in *) &ss;
+            return ntohs(addrin->sin_port);
+        }
+
+        if (ss.ss_family == AF_INET6) {
+            ::sockaddr_in6 *addrin6 = (::sockaddr_in6 *) &ss;
+            return ntohs(addrin6->sin6_port);
+        }
+
+        return 0;
+    }
+
+
+    void tcp_socket::apply_socket_options(bool is_listen_socket) {
+        uverr ec;
+
+        /* it likely only makes sense to apply some socket options to established
+         * connections, rather that listen sockets */
+        if (!is_listen_socket) {
+            ec = uv_tcp_nodelay(m_uv_tcp, m_sockopts.tcp_no_delay_enable);
+            if (ec)
+                LOG_WARN("uv_tcp_nodelay failed, " << ec.message());
+
+            ec = uv_tcp_keepalive(m_uv_tcp,
+                                  m_sockopts.keep_alive_enable,
+                                  m_sockopts.keep_alive_delay.count());
+            if (ec)
+                LOG_WARN("uv_tcp_keepalive failed, " << ec.message());
+        }
+    }
 
 } // namespace wampcc

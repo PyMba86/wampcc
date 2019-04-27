@@ -10,16 +10,15 @@
 
 #include "wampcc/json.h"
 
-namespace wampcc
-{
+namespace wampcc {
 
-bool apply_patch(json_value& doc, const json_array& patch);
+    bool apply_patch(json_value &doc, const json_array &patch);
 
-const json_value * eval_json_pointer(const json_value& doc,
-                                     const char* path);
+    const json_value *eval_json_pointer(const json_value &doc,
+                                        const char *path);
 
-json_value * eval_json_pointer(json_value& doc,
-                               const char* path);
+    json_value *eval_json_pointer(json_value &doc,
+                                  const char *path);
 
 }
 

@@ -11,36 +11,36 @@
 #include <string>
 
 #ifndef _WIN32
+
 #include <sys/time.h>
+
 #endif
 
 #ifdef _WIN32
-  #define snprintf _snprintf
-  #define vsnprintf _vsnprintf
-  #define strcasecmp _stricmp
-  #define strncasecmp _strnicmp
+#define snprintf _snprintf
+#define vsnprintf _vsnprintf
+#define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #endif
 
-namespace wampcc
-{
+namespace wampcc {
 
-  struct time_val
-  {
+    struct time_val {
 #ifndef _WIN32
-    typedef long type_type;
+        typedef long type_type;
 #else
-    typedef __time64_t type_type;
+        typedef __time64_t type_type;
 #endif
-    type_type sec;  /* seconds */
-    type_type usec; /* micros */
-  };
+        type_type sec;  /* seconds */
+        type_type usec; /* micros */
+    };
 
-  int thread_id();
+    int thread_id();
 
-  wampcc::time_val time_now();
+    wampcc::time_val time_now();
 
-  /** Return local hostname, or throw upon failure. */
-  std::string hostname();
+    /** Return local hostname, or throw upon failure. */
+    std::string hostname();
 
 } // namespace
 

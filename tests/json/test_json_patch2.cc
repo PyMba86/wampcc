@@ -17,36 +17,32 @@ using namespace wampcc;
    intermediate state.  I.e. if a patch fails, the target object should be
    unchanged.
  */
-static bool patch_test(const char* docstr, const char* patchstr)
-{
-  json_value doc=json_decode(docstr);
-  json_value orig = doc;
-  json_array patch=json_decode(patchstr).as_array();
-  bool had_exception = true;
-  bool patch_ok;
+static bool patch_test(const char *docstr, const char *patchstr) {
+    json_value doc = json_decode(docstr);
+    json_value orig = doc;
+    json_array patch = json_decode(patchstr).as_array();
+    bool had_exception = true;
+    bool patch_ok;
 
-  // apply the patch, ignore errors
-  try
-  {
-    patch_ok = apply_patch(doc, patch);
-    had_exception = false;
-  }
-  catch (std::exception& e)
-  {
-    std::cout << "apply patch exception: " << e.what() << "\n";
-  }
+    // apply the patch, ignore errors
+    try {
+        patch_ok = apply_patch(doc, patch);
+        had_exception = false;
+    }
+    catch (std::exception &e) {
+        std::cout << "apply patch exception: " << e.what() << "\n";
+    }
 
-  if (!had_exception && patch_ok)
-    throw std::runtime_error("test was expected to fail");
+    if (!had_exception && patch_ok)
+        throw std::runtime_error("test was expected to fail");
 
-  bool equal = (doc == orig);
+    bool equal = (doc == orig);
 
-  if (!equal)
-  {
-    std::cout << "before: '" << orig << "'\n"
-              << "after : '" << doc << "'\n";
-  }
-  return equal;
+    if (!equal) {
+        std::cout << "before: '" << orig << "'\n"
+                  << "after : '" << doc << "'\n";
+    }
+    return equal;
 }
 
 
@@ -54,9 +50,9 @@ static bool patch_test(const char* docstr, const char* patchstr)
 
 TEST_CASE( "rollback_due_to_test" )
 {
-  const char* doc =  " { \"foo\": [\"bar\", \"baz\"] } ";
+const char *doc = " { \"foo\": [\"bar\", \"baz\"] } ";
 
-  const char* patch = " \
+const char *patch = " \
  [                                                                     \
     { \"op\": \"copy\", \"from\": \"/foo\", \"path\": \"/bar\" },      \
     { \"op\": \"copy\", \"from\": \"/foo\", \"path\": \"/bar2\" },     \
@@ -65,17 +61,17 @@ TEST_CASE( "rollback_due_to_test" )
 ]                                                                      \
 ";
 
-  REQUIRE(
-    patch_test( doc, patch )
-    );
+REQUIRE(
+        patch_test(doc, patch)
+);
 }
 //----------------------------------------------------------------------
 
 TEST_CASE( "rollback_due_to_bad_patch" )
 {
-  const char* doc =  " { \"foo\": [\"bar\", \"baz\"] } ";
+const char *doc = " { \"foo\": [\"bar\", \"baz\"] } ";
 
-  const char* patch = " \
+const char *patch = " \
  [                                                                     \
     { \"op\": \"copy\", \"from\": \"/foo\", \"path\": \"/bar\" },      \
     { \"op\": \"copy\", \"from\": \"/foo\", \"path\": \"/bar2\" },     \
@@ -84,17 +80,17 @@ TEST_CASE( "rollback_due_to_bad_patch" )
 ]                                                                      \
 ";
 
-  REQUIRE(
-    patch_test( doc, patch )
-    );
+REQUIRE(
+        patch_test(doc, patch)
+);
 }
 //----------------------------------------------------------------------
 
 TEST_CASE( "rollback_full_doc" )
 {
-  const char* doc =  " { \"foo\": [\"bar\", \"baz\"] } ";
+const char *doc = " { \"foo\": [\"bar\", \"baz\"] } ";
 
-  const char* patch = " \
+const char *patch = " \
  [                                                                     \
     { \"op\": \"remove\", \"from\": \"/foo\", \"path\": \"\" },        \
     { \"op\": \"replace\", \"path\": \"/faa/1\", \"value\": \"yy\" }, \
@@ -102,21 +98,19 @@ TEST_CASE( "rollback_full_doc" )
 ]                                                                      \
 ";
 
-  REQUIRE(
-    patch_test( doc, patch )
-    );
+REQUIRE(
+        patch_test(doc, patch)
+);
 
 }
 
 
-
-int main(int argc, char** argv)
-{
-  try {
-    int result = minitest::run(argc, argv);
-    return (result < 0xFF ? result : 0xFF );
-  } catch (std::exception& e) {
-    std::cout << e.what() << std::endl;
-    return 1;
-  }
+int main(int argc, char **argv) {
+    try {
+        int result = minitest::run(argc, argv);
+        return (result < 0xFF ? result : 0xFF);
+    } catch (std::exception &e) {
+        std::cout << e.what() << std::endl;
+        return 1;
+    }
 }

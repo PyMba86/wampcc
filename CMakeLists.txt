@@ -26,8 +26,9 @@ endif()
 ##
 option (BUILD_SHARED_LIBS "Use shared libraries" ${DEFAULT_BUILD_SHARED_LIBS})
 option (BUILD_STATIC_LIBS "Use static libraries" ON)
-option (BUILD_EXAMPLES    "Build example apps"   ON)
-option (BUILD_UTILS       "Build utility apps"   ${DEFAULT_BUILD_UTILS})
+option (BUILD_APPS        "Build apps"           ON)
+option (BUILD_EXAMPLES    "Build example apps"   OFF)
+option (BUILD_UTILS       "Build utility apps"   OFF)
 option (BUILD_TESTS       "Build test apps"      OFF)
 set(LIBUV_DIR   "" CACHE STRING "libuv installation directory")
 set(JANSSON_DIR "" CACHE STRING "Jansson installation directory")
@@ -121,6 +122,7 @@ include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/3rdparty/websocketpp")
 include_directories("${PROJECT_SOURCE_DIR}/3rdparty")
 
+
 # add external dependencies after the wampcc includes
 include_directories(${OPENSSL_INCLUDE_DIR})
 
@@ -130,6 +132,7 @@ add_subdirectory(libs/wampcc)
 add_subdirectory(utils)
 add_subdirectory(tests)
 add_subdirectory(examples)
+add_subdirectory(apps)
 
 install(FILES ${PROJECT_BINARY_DIR}/wampcc.pc DESTINATION "${INSTALL_PKGCONFIG_DIR}")
 install(FILES ${PROJECT_BINARY_DIR}/wampcc_json.pc DESTINATION "${INSTALL_PKGCONFIG_DIR}")

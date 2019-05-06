@@ -6,10 +6,12 @@ endif ()
 
 list(APPEND EXTRA_LIBS ${LIBUV_LIBRARIES} ${OPENSSL_LIBRARIES} ${JANSSON_LIBRARIES})
 
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread ")
+
 # Helper macro for example compilation
 macro(Compile_App app source_path)
     add_executable(${app} "${PROJECT_SOURCE_DIR}/apps/${source_path}/${app}.cc")
-    set_property(TARGET ${app} PROPERTY CXX_STANDARD 11)
+    set_property(TARGET ${app} PROPERTY CXX_STANDARD 17)
     set_property(TARGET ${app} PROPERTY CXX_STANDARD_REQUIRED ON)
     target_link_libraries(${app} ${EXTRA_LIBS})
 
@@ -22,7 +24,10 @@ endmacro()
 if (BUILD_APPS)
 
     # Basic
-    Compile_App(manager manager)
+   # Compile_App(manager manager)
     Compile_App(platform platform)
 
 endif () # BUILD_EXAMPLES
+
+
+add_subdirectory(manager)
